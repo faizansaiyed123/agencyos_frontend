@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api } from "../api/client";
+import { api, apiBlob } from "../api/client";
 import { useAction, useClients, useInvoice, useInvoices, useProject, useProjects, useUnbilled } from "../api/hooks";
 import { can } from "../api/permissions";
 import { useNames } from "../api/useNames";
@@ -110,6 +110,19 @@ export function InvoiceDetail() {
   const rmLine = useAction((lid: string) => api(`/invoices/${id}/lines/${lid}`, { method: "DELETE" }), inv2);
   const setMeta = useAction((b: { due_date?: string; tax_rate_bps?: number }) => api(`/invoices/${id}`, { method: "PATCH", body: b }), inv2);
   const void_ = useAction(() => api(`/invoices/${id}/void`, { body: { reason } }), inv2);
+  const email = useAction(() => api(`/invoices/${id}/send`, {
+    method: "POST",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+  }), inv2);
+  const downloadPdf = async () => {
+    const blob = await apiBlob(`/invoices/${id}/pdf`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${inv?.number ?? "invoice"}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (q.isLoading) return <Spinner />;
   if (q.error || !q.data || !inv) return <><ErrorNote error={q.error} /><Link to="/invoices">Back to invoices</Link></>;
@@ -125,12 +138,16 @@ export function InvoiceDetail() {
         actions={<>
           <InvoiceBadge inv={inv} />
           <button className="btn ghost" onClick={() => window.print()}>Print</button>
+          {!draft && <button className="btn ghost" disabled={email.isPending} onClick={() => email.mutate(undefined)}>
+            {email.isPending ? "Queuing…" : "Email invoice"}
+          </button>}
+          {!draft && <button className="btn ghost" onClick={() => downloadPdf()}>PDF</button>
           {manage && draft && <><button className="btn primary" disabled={issue.isPending || !lines.length} onClick={() => { if (confirm("Issue this invoice? It gets its number and can no longer be edited.")) issue.mutate(undefined); }}>Issue invoice</button>
             <button className="btn danger" onClick={() => { if (confirm("Discard this draft?")) discard.mutateAsync(undefined).then(() => nav("/invoices")); }}>Discard</button></>}
           {manage && (inv.status === "sent" || inv.status === "partially_paid") && <button className="btn primary" onClick={() => setPaying(true)}>Record payment</button>}
           {manage && inv.status === "sent" && <button className="btn danger" onClick={() => setVoiding(true)}>Void</button>}
         </>} />
-      <ErrorNote error={issue.error ?? discard.error ?? addTime.error ?? addMs.error ?? rmLine.error ?? setMeta.error ?? void_.error} />
+      <ErrorNote error={issue.error ?? discard.error ?? addTime.error ?? addMs.error ?? rmLine.error ?? setMeta.error ?? void_.error ?? email.error} />
       {inv.status === "void" && <div className="error">Voided {fmtDate(inv.voided_at ?? null)}: {inv.void_reason}</div>}
       <div className="cols">
         <div style={{ display: "grid", gap: 20 }}>
