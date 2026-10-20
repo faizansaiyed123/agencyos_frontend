@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api } from "../api/client";
+import { api, apiBlob } from "../api/client";
 import { useAction, usePortalOverview, usePortalProposal } from "../api/hooks";
 import { Empty, ErrorNote, PageHead, Spinner, StatusBadge } from "../components/ui";
 import { fmtDate, label, money } from "../lib";
@@ -47,6 +47,15 @@ export default function Portal() {
   const { client, projects, proposals, invoices } = q.data;
   const openProposals = proposals.filter((p) => p.status === "sent");
   const outstanding = invoices.reduce((sum, i) => sum + i.balance_cents, 0);
+  const downloadInvoice = async (id: string, number: string | null) => {
+    const blob = await apiBlob(`/portal/invoices/${id}/pdf`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${number ?? "invoice"}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <>
@@ -113,7 +122,11 @@ export default function Portal() {
                 {invoices.map((i) => (
                   <div className="portal-row" key={i.id}>
                     <div><strong>{i.number || "Invoice"}</strong><div className="muted">{i.due_date ? `Due ${fmtDate(i.due_date)}` : "No due date"}</div></div>
-                    <div className="right-stack"><span className={`badge ${i.status === "paid" ? "moss" : i.balance_cents > 0 ? "sun" : ""}`}>{label(i.status)}</span><strong>{money(i.balance_cents, i.currency)}</strong></div>
+                    <div className="right-stack">
+                      <span className={`badge ${i.status === "paid" ? "moss" : i.balance_cents > 0 ? "sun" : ""}`}>{label(i.status)}</span>
+                      <strong>{money(i.balance_cents, i.currency)}</strong>
+                      <button className="btn sm ghost" onClick={() => downloadInvoice(i.id, i.number)}>PDF</button>
+                    </div>
                   </div>
                 ))}
               </div>
