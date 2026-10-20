@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ErrorNote, Field } from "../components/ui";
 
@@ -117,7 +118,7 @@ export function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [done, setDone] = useState(false);
   const { err, busy, submit } = useSubmit(async () => {
-    await (await import("../api/client")).api("/auth/password/forgot", {
+    await api("/auth/password/forgot", {
       body: { email },
       auth: false,
     });
@@ -152,7 +153,6 @@ export function ResetPassword() {
   const [done, setDone] = useState(false);
   const [token] = useState(params.get("token") ?? "");
   const { err, busy, submit } = useSubmit(async () => {
-    const { api } = await import("../api/client");
     await api("/auth/password/reset", { body: { token, password }, auth: false });
     setDone(true);
   });
