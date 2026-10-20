@@ -141,7 +141,7 @@ export function InvoiceDetail() {
           {!draft && <button className="btn ghost" disabled={email.isPending} onClick={() => email.mutate(undefined)}>
             {email.isPending ? "Queuing…" : "Email invoice"}
           </button>}
-          {!draft && <button className="btn ghost" onClick={() => downloadPdf()}>PDF</button>
+          {!draft && <button className="btn ghost" onClick={() => downloadPdf()}>PDF</button>}
           {manage && draft && <><button className="btn primary" disabled={issue.isPending || !lines.length} onClick={() => { if (confirm("Issue this invoice? It gets its number and can no longer be edited.")) issue.mutate(undefined); }}>Issue invoice</button>
             <button className="btn danger" onClick={() => { if (confirm("Discard this draft?")) discard.mutateAsync(undefined).then(() => nav("/invoices")); }}>Discard</button></>}
           {manage && (inv.status === "sent" || inv.status === "partially_paid") && <button className="btn primary" onClick={() => setPaying(true)}>Record payment</button>}
