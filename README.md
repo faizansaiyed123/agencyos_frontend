@@ -57,6 +57,8 @@ Buttons are shown or hidden from the role table in `src/api/permissions.ts` (a c
 
 ## Release verification
 
+Backend verification is run against the current backend `main` head.
+
 Frontend CI verifies the production frontend build, Playwright smoke flow, and Docker image.
 The companion backend compatibility workflow checks the backend repository's install, Ruff, tests,
 and Docker image from the same release branch so the split repositories are verified together.
