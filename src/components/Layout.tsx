@@ -23,7 +23,7 @@ export default function Layout() {
     <div className="shell">
       <nav className="side" aria-label="Main">
         <div className="brand">Agency<b>OS</b></div>
-        <NavLink className="nav" to="/" end>Overview</NavLink>
+        {role === "client" ? <NavLink className="nav" to="/portal">Client portal</NavLink> : <NavLink className="nav" to="/" end>Overview</NavLink>}
         {can(role, "client:read") && <NavLink className="nav" to="/clients">Clients</NavLink>}
         {can(role, "deal:read") && <NavLink className="nav" to="/deals">Pipeline</NavLink>}
         {can(role, "proposal:read") && <NavLink className="nav" to="/proposals">Proposals</NavLink>}
