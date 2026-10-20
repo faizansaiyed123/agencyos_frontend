@@ -16,13 +16,25 @@ import { ProjectDetail, Projects } from "./pages/Projects";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Work from "./pages/Work";
+import Portal from "./pages/Portal";
 
-function Guard({ perm, children }: { perm?: Perm; children: ReactNode }) {
+function Guard({ perm, clientOnly, children }: { perm?: Perm; clientOnly?: boolean; children: ReactNode }) {
   const { user } = useAuth();
+  if (clientOnly && user?.role !== "client") {
+    return <Navigate to="/" replace />;
+  }
+  if (clientOnly && user?.role !== "client") {
+    return <Navigate to="/" replace />;
+  }
   if (perm && !can(user?.role, perm)) {
     return <div className="empty"><strong>You don't have access to this page</strong>Ask an admin if you need it.</div>;
   }
   return <>{children}</>;
+}
+
+function HomeRedirect() {
+  const { user } = useAuth();
+  return user?.role === "client" ? <Navigate to="/portal" replace /> : <Dashboard />;
 }
 
 function Private() {
@@ -41,7 +53,8 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route element={<Private />}>
-        <Route index element={<Dashboard />} />
+        <Route index element={<HomeRedirect />} />
+        <Route path="portal" element={<Guard clientOnly><Portal /></Guard>} />
         <Route path="clients" element={<Guard perm="client:read"><Clients /></Guard>} />
         <Route path="clients/:id" element={<Guard perm="client:read"><ClientDetail /></Guard>} />
         <Route path="deals" element={<Guard perm="deal:read"><Pipeline /></Guard>} />
