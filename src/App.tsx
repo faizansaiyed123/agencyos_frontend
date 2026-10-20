@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useAuth } from "./auth/AuthContext";
 import { can, type Perm } from "./api/permissions";
@@ -6,6 +6,7 @@ import Layout from "./components/Layout";
 import { Spinner } from "./components/ui";
 import { AcceptInvite, ForgotPassword, Login, ResetPassword, Signup } from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import Homepage from "./pages/Homepage";
 import { ClientDetail, Clients } from "./pages/Clients";
 import { DealDetail, Pipeline } from "./pages/Deals";
 import { ProposalDetail, Proposals } from "./pages/Proposals";
@@ -36,8 +37,11 @@ function HomeRedirect() {
 
 function Private() {
   const { user, loading } = useAuth();
+  const { pathname } = useLocation();
   if (loading) return <Spinner />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    return pathname === "/" ? <Homepage /> : <Navigate to="/login" replace />;
+  }
   return <Layout />;
 }
 
