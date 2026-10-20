@@ -1,0 +1,29 @@
+name: Router dependency refresh
+
+on:
+  push:
+    paths:
+      - ".router-refresh-trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Regenerate lockfile
+        run: npm install react-router-dom@^7.18.4
+      - name: Commit generated lockfile
+        run: |
+          rm -f .router-refresh-trigger
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json .router-refresh-trigger
+          git commit -m "chore: upgrade react router"
+          git push
