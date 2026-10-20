@@ -110,3 +110,23 @@ export async function api<T = unknown>(path: string, opts: Opts = {}, retried = 
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
+
+export async function apiBlob(path: string, opts: { method?: string; headers?: Record<string, string> } = {}, retried = false): Promise<Blob> {
+  const url = new URL(`/api/v1${path}`, window.location.origin);
+  const headers: Record<string, string> = { ...opts.headers };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const method = (opts.method ?? "GET").toUpperCase();
+  const res = await request(url, {
+    method,
+    headers,
+    credentials: "include",
+  }, method === "GET" || method === "HEAD" || method === "OPTIONS");
+
+  if (res.status === 401 && !retried) {
+    if (await refreshSession()) return apiBlob(path, opts, true);
+    accessToken = null;
+    onSessionLost?.();
+  }
+  if (!res.ok) throw await parseError(res);
+  return res.blob();
+}
