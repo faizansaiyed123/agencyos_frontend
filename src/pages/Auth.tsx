@@ -111,3 +111,67 @@ export function AcceptInvite() {
     </Shell>
   );
 }
+
+export function ForgotPassword() {
+  const nav = useNavigate();
+  const [email, setEmail] = useState("");
+  const [done, setDone] = useState(false);
+  const { err, busy, submit } = useSubmit(async () => {
+    await (await import("../api/client")).api("/auth/password/forgot", {
+      body: { email },
+      auth: false,
+    });
+    setDone(true);
+  });
+  return (
+    <Shell
+      title="Forgot your password?"
+      sub="Enter your work email and we’ll send a reset link if an account exists."
+      footer={<>Remember it? <Link to="/login">Back to sign in</Link></>}
+    >
+      {done ? (
+        <div className="notice">
+          Check your email for a reset link. For security, the same message is shown whether or not an account exists.
+          <div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => nav("/login")}>Back to sign in</button></div>
+        </div>
+      ) : (
+        <form onSubmit={submit}>
+          <ErrorNote error={err} />
+          <Field label="Work email"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required autoFocus /></Field>
+          <button className="btn primary" disabled={busy}>{busy ? "Sending…" : "Send reset link"}</button>
+        </form>
+      )}
+    </Shell>
+  );
+}
+
+export function ResetPassword() {
+  const nav = useNavigate();
+  const [params] = useSearchParams();
+  const [password, setPassword] = useState("");
+  const [done, setDone] = useState(false);
+  const [token] = useState(params.get("token") ?? "");
+  const { err, busy, submit } = useSubmit(async () => {
+    const { api } = await import("../api/client");
+    await api("/auth/password/reset", { body: { token, password }, auth: false });
+    setDone(true);
+  });
+  return (
+    <Shell title="Set a new password" sub="Choose a new password for your AgencyOS account.">
+      {done ? (
+        <div className="notice">
+          Your password has been changed. Old refresh sessions have been revoked.
+          <div style={{ marginTop: 12 }}><button className="btn primary" onClick={() => nav("/login")}>Sign in</button></div>
+        </div>
+      ) : (
+        <form onSubmit={submit}>
+          <ErrorNote error={err} />
+          <Field label="New password" hint="At least 10 characters, with upper and lower case letters and a digit.">
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={10} autoComplete="new-password" autoFocus />
+          </Field>
+          <button className="btn primary" disabled={busy || token.length < 20}>{busy ? "Saving…" : "Change password"}</button>
+        </form>
+      )}
+    </Shell>
+  );
+}
