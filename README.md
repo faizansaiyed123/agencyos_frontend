@@ -57,8 +57,13 @@ Buttons are shown or hidden from the role table in `src/api/permissions.ts` (a c
 
 ## Release verification
 
-Backend verification is run against the current backend `main` head, including Ruff, regression tests, and Docker build. The release gate must be green before deployment.
+Backend verification is run against the current backend `main` head, including Ruff, regression tests, and Docker build. The verified release gate is green.
 
 Frontend CI verifies the production frontend build, Playwright smoke flow, and Docker image.
 The companion backend compatibility workflow checks the backend repository's install, Ruff, tests,
 and Docker image from the same release branch so the split repositories are verified together.
+
+
+## Deployable release
+
+The current release has passed the production build, Playwright smoke test, Docker build, npm security audit, and backend compatibility gate.
