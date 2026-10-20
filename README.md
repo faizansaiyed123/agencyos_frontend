@@ -52,3 +52,10 @@ Buttons are shown or hidden from the role table in `src/api/permissions.ts` (a c
 `src/api` client (token refresh, timeouts, safe retries, problem+json errors), types, hooks, permissions ·
 `src/auth` session context · `src/components` shared UI (comments, files, bell, search) ·
 `src/pages` screens.
+
+
+## Release verification
+
+Frontend CI verifies the production frontend build, Playwright smoke flow, and Docker image.
+The companion backend compatibility workflow checks the backend repository's install, Ruff, tests,
+and Docker image from the same release branch so the split repositories are verified together.
