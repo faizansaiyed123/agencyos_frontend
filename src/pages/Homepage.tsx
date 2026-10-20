@@ -76,7 +76,7 @@ function DashboardPreview() {
         <div className="landing-preview-content">
           <div className="landing-preview-heading">
             <div>
-              <span className="landing-preview-kicker">MONDAY, 20 OCTOBER</span>
+              <span className="landing-preview-kicker">AGENCY OVERVIEW · THIS WEEK</span>
               <h3>Your agency at a glance<span>.</span></h3>
               <p>A clearer view of what is moving forward.</p>
             </div>
@@ -86,7 +86,7 @@ function DashboardPreview() {
           <div className="landing-preview-stats">
             <div className="landing-preview-stat">
               <span>OPEN PIPELINE</span>
-              <strong>£86,400</strong>
+              <strong>86.4k</strong>
               <small><i>↗</i> Opportunities in progress</small>
             </div>
             <div className="landing-preview-stat">
