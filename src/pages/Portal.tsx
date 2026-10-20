@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import { useAction, usePortalOverview, usePortalProposal } from "../api/hooks";
 import { Empty, ErrorNote, PageHead, Spinner, StatusBadge } from "../components/ui";
 import { fmtDate, label, money } from "../lib";
+import type { ProposalStatus } from "../api/types";
 
 function ProposalCard({
   id,
@@ -13,7 +14,7 @@ function ProposalCard({
   validUntil,
   onOpen,
 }: {
-  id: string; title: string; status: string; currency: string; total: number;
+  title: string; status: ProposalStatus; currency: string; total: number;
   validUntil: string | null; onOpen: () => void;
 }) {
   return (
@@ -76,7 +77,6 @@ export default function Portal() {
                 {proposals.map((p) => (
                   <ProposalCard
                     key={p.id}
-                    id={p.id}
                     title={p.title}
                     status={p.status}
                     currency={p.currency}
