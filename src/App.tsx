@@ -23,9 +23,6 @@ function Guard({ perm, clientOnly, children }: { perm?: Perm; clientOnly?: boole
   if (clientOnly && user?.role !== "client") {
     return <Navigate to="/" replace />;
   }
-  if (clientOnly && user?.role !== "client") {
-    return <Navigate to="/" replace />;
-  }
   if (perm && !can(user?.role, perm)) {
     return <div className="empty"><strong>You don't have access to this page</strong>Ask an admin if you need it.</div>;
   }
