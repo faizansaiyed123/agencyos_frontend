@@ -6,7 +6,6 @@ import { fmtDate, label, money } from "../lib";
 import type { ProposalStatus } from "../api/types";
 
 function ProposalCard({
-  id,
   title,
   status,
   currency,
