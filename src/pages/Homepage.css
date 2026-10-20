@@ -113,7 +113,7 @@
 .landing-preview-footnote { display: flex; align-items: center; gap: 6px; margin-top: 11px; color: #87919f; font-size: 7px; }
 .landing-preview-footnote span { width: 5px; height: 5px; border-radius: 50%; background: var(--landing-green); }
 .landing-float-note { position: absolute; right: -24px; bottom: -4px; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 12px 15px; background: #fff; border: 1px solid #d7dde5; border-radius: 4px; box-shadow: 0 12px 32px rgba(21,26,34,.12); }
-.landing-float-icon { display: grid; place-items: center; width: 29px; height: 29px; background: var(--landing-blue-soft); color: var(--landing-blue); border-radius: 3px; font-size: 16px; }
+.landing-float-icon { display: grid; place-items: center; width: 29px; height: 29px; background: var(--blue-soft); color: var(--landing-blue); border-radius: 3px; font-size: 16px; }
 .landing-float-note b { display: block; font: 600 12px var(--head); }
 .landing-float-note small { display: block; margin-top: 3px; color: var(--landing-muted); font-size: 9px; }
 .landing-visual-stamp { position: absolute; left: -8px; bottom: 4px; z-index: 2; display: block; padding: 11px 13px; background: var(--landing-yellow); color: var(--ink); font: 700 9px/1.18 var(--head); letter-spacing: -.01em; transform: rotate(-7deg); box-shadow: 0 5px 12px rgba(21,26,34,.12); }
