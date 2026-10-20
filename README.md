@@ -1,7 +1,7 @@
 # AgencyOS frontend
 
 React + TypeScript + Vite single-page app for the AgencyOS API (`../backend`).
-Every screen talks to the real API; there is no mock data.
+Every screen talks to the real API; there is no mock response layer.
 
 ## Run it
 
@@ -25,7 +25,7 @@ same host behind one reverse proxy.
 
 | Area | What you can do |
 |---|---|
-| Sign-in | Login, create organisation, accept invite, two-factor step, silent token refresh |
+| Sign-in | Login, password recovery, create organisation, accept invite, two-factor step, silent token refresh |
 | Overview | "Needs attention" feed (overdue invoices, late projects, expiring proposals, stalled deals), pipeline value by stage |
 | Clients | List, detail, contacts, files, discussion |
 | Pipeline | Drag-and-drop board, forward-only stage moves, lost reason, history |
