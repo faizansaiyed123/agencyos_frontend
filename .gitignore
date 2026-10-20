@@ -7,7 +7,6 @@ dist/
 # Test scripts and results
 e2e/
 test-results/
-playwright.config.ts
 playwright-report/
 
 # Cache
