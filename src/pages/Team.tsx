@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api/client";
-import { useAction, useInvites, useUsers } from "../api/hooks";
+import { useAction, useClients, useInvites, useUsers } from "../api/hooks";
 import { can, INVITABLE_ROLES, ROLE_LABEL } from "../api/permissions";
 import type { Role } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -9,9 +9,14 @@ import { fmtDate } from "../lib";
 
 function InviteForm({ onClose }: { onClose: () => void }) {
   const [email, setEmail] = useState(""); const [role, setRole] = useState<Role>("team_member");
+  const [clientId, setClientId] = useState("");
+  const clients = useClients(false, role === "client");
   // One key per opened dialog: a retry after a dropped connection can't create a second invite.
   const [key] = useState(() => crypto.randomUUID());
-  const create = useAction(() => api("/invites", { body: { email, role }, headers: { "Idempotency-Key": key } }), ["invites"]);
+  const create = useAction(() => api("/invites", {
+    body: { email, role, client_id: role === "client" ? clientId : null },
+    headers: { "Idempotency-Key": key },
+  }), ["invites"]);
   return (
     <FormModal title="Invite a teammate" submitLabel="Send invite" onClose={onClose} onSubmit={() => create.mutateAsync(undefined)}>
       <Field label="Email"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></Field>
@@ -20,6 +25,14 @@ function InviteForm({ onClose }: { onClose: () => void }) {
           {INVITABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
         </select>
       </Field>
+      {role === "client" && (
+        <Field label="Client account">
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)} required>
+            <option value="">Choose a client…</option>
+            {(clients.data?.items ?? []).map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+          </select>
+        </Field>
+      )}
     </FormModal>
   );
 }
