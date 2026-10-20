@@ -4,7 +4,7 @@ import { useAuth } from "./auth/AuthContext";
 import { can, type Perm } from "./api/permissions";
 import Layout from "./components/Layout";
 import { Spinner } from "./components/ui";
-import { AcceptInvite, Login, Signup } from "./pages/Auth";
+import { AcceptInvite, ForgotPassword, Login, ResetPassword, Signup } from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import { ClientDetail, Clients } from "./pages/Clients";
 import { DealDetail, Pipeline } from "./pages/Deals";
@@ -38,6 +38,8 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route element={<Private />}>
         <Route index element={<Dashboard />} />
         <Route path="clients" element={<Guard perm="client:read"><Clients /></Guard>} />
