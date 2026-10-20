@@ -1,7 +1,20 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { can, ROLE_LABEL } from "../api/permissions";
 import TopBar from "./TopBar";
+
+function OfflineBanner() {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+  return online ? null : <div className="notice" role="status">You're offline. Changes cannot be saved until the connection returns.</div>;
+}
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -28,7 +41,7 @@ export default function Layout() {
           <br /><button onClick={logout}>Sign out</button>
         </div>
       </nav>
-      <main className="main"><TopBar /><Outlet /></main>
+      <main className="main"><TopBar /><OfflineBanner /><Outlet /></main>
     </div>
   );
 }
