@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 import type {
   Client, Contact, Deal, DealHistory, Invite, Page, Proposal, ProposalWithItems, User,
+  PortalInvoice, PortalOverview, PortalProject, PortalProposal, PortalProposalDetail,
 } from "./types";
 
 export const useClients = (includeArchived = false, enabled = true) =>
@@ -92,3 +93,15 @@ export const useDeliveries = (id: string | null) =>
   useQuery({ queryKey: ["deliveries", id], enabled: !!id, queryFn: () => api<WebhookDelivery[]>(`/webhooks/${id}/deliveries`) });
 export const useFlags = () => useQuery({ queryKey: ["flags"], queryFn: () => api<FlagRow[]>("/flags") });
 export const useMyFlags = () => useQuery({ queryKey: ["flags-me"], queryFn: () => api<Record<string, boolean>>("/flags/me") });
+
+
+export const usePortalOverview = () =>
+  useQuery({ queryKey: ["portal-overview"], queryFn: () => api<PortalOverview>("/portal/overview") });
+export const usePortalProjects = () =>
+  useQuery({ queryKey: ["portal-projects"], queryFn: () => api<PortalProject[]>("/portal/projects") });
+export const usePortalProposals = () =>
+  useQuery({ queryKey: ["portal-proposals"], queryFn: () => api<PortalProposal[]>("/portal/proposals") });
+export const usePortalProposal = (id: string | null) =>
+  useQuery({ queryKey: ["portal-proposal", id], enabled: !!id, queryFn: () => api<PortalProposalDetail>(`/portal/proposals/${id}`) });
+export const usePortalInvoices = () =>
+  useQuery({ queryKey: ["portal-invoices"], queryFn: () => api<PortalInvoice[]>("/portal/invoices") });
