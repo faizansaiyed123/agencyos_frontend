@@ -4,7 +4,7 @@ export type Role =
 
 export interface User {
   id: string; org_id: string; email: string; full_name: string; role: Role;
-  is_active: boolean; mfa_enabled: boolean; last_login_at: string | null; created_at: string;
+  client_id: string | null; is_active: boolean; mfa_enabled: boolean; last_login_at: string | null; created_at: string;
 }
 export interface Page<T> { items: T[]; total: number; limit: number; offset: number }
 
@@ -41,7 +41,7 @@ export interface ProposalItem {
 export interface ProposalWithItems { proposal: Proposal; items: ProposalItem[]; total_amount: number }
 
 export interface Invite {
-  id: string; email: string; role: Role; expires_at: string; accepted_at: string | null; created_at: string;
+  id: string; email: string; role: Role; client_id: string | null; expires_at: string; accepted_at: string | null; created_at: string;
 }
 export interface LoginResult {
   mfa_required: boolean; access_token: string | null; expires_in: number | null; mfa_pending_token: string | null;
@@ -105,3 +105,31 @@ export interface AskResult { mode: string; answer: string; sources: { type: stri
 export interface WebhookEndpoint { id: string; url: string; events: string[]; is_active: boolean; created_at: string; secret?: string | null }
 export interface WebhookDelivery { id: string; event_type: string; status: string; attempts: number; response_status: number | null; last_error: string | null; created_at: string }
 export interface FlagRow { key: string; description: string; enabled: boolean; rollout_percent: number; effective_for_me: boolean }
+
+
+export interface PortalClient {
+  id: string; name: string; industry: string | null; website: string | null;
+}
+export interface PortalProject {
+  id: string; name: string; description: string | null; status: ProjectStatus;
+  budget_amount: number | null; currency: string; start_date: string | null; due_date: string | null;
+}
+export interface PortalProposal {
+  id: string; title: string; status: ProposalStatus; currency: string; valid_until: string | null;
+  sent_at: string | null; accepted_at: string | null; rejected_at: string | null;
+  rejection_reason: string | null; total_amount: number;
+}
+export interface PortalInvoice {
+  id: string; number: string | null; status: InvoiceStatus; currency: string;
+  issue_date: string | null; due_date: string | null; total_cents: number;
+  amount_paid_cents: number; balance_cents: number; notes: string | null;
+}
+export interface PortalOverview {
+  client: PortalClient; projects: PortalProject[]; proposals: PortalProposal[]; invoices: PortalInvoice[];
+}
+export interface PortalProposalItem {
+  id: string; description: string; quantity: string; unit_amount: number; amount: number; position: number;
+}
+export interface PortalProposalDetail {
+  proposal: PortalProposal; items: PortalProposalItem[];
+}
