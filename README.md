@@ -27,6 +27,7 @@ same host behind one reverse proxy.
 | Area | What you can do |
 |---|---|
 | Sign-in | Login, password recovery, create organisation, accept invite, two-factor step, silent token refresh |
+| Client portal | Scoped project view, proposal review/acceptance, invoice status and PDF download |
 | Overview | "Needs attention" feed (overdue invoices, late projects, expiring proposals, stalled deals), pipeline value by stage |
 | Clients | List, detail, contacts, files, discussion |
 | Pipeline | Drag-and-drop board, forward-only stage moves, lost reason, history |
