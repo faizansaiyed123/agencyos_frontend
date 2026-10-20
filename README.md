@@ -1,6 +1,6 @@
 # AgencyOS frontend
 
-React + TypeScript + Vite single-page app for the AgencyOS API (`../backend`).
+React + TypeScript + Vite single-page app for the AgencyOS backend repository.
 Every screen talks to the real API; there is no mock response layer.
 
 ## Run it
@@ -15,6 +15,7 @@ python -m app.worker                          # in a second terminal
 # 2. Frontend
 cd frontend && npm install && npm run dev     # http://localhost:5173
 npm run build                                 # production bundle in dist/
+npm run test:e2e                              # public-route browser smoke tests
 ```
 
 Vite proxies `/api` to `localhost:8000`, so the browser sees one origin. That matters:
@@ -48,6 +49,6 @@ Buttons are shown or hidden from the role table in `src/api/permissions.ts` (a c
 - `src/api/types.ts` was checked against live responses for all 36 interfaces.
 
 ## Layout
-`src/api` client (token refresh, problem+json errors), types, hooks, permissions ·
+`src/api` client (token refresh, timeouts, safe retries, problem+json errors), types, hooks, permissions ·
 `src/auth` session context · `src/components` shared UI (comments, files, bell, search) ·
 `src/pages` screens.
