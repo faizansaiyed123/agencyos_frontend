@@ -1,6 +1,6 @@
 # AgencyOS frontend
 
-React + TypeScript + Vite single-page app for the AgencyOS backend repository.
+React + TypeScript + Vite 6 single-page app for the AgencyOS backend repository.
 Every screen talks to the real API; there is no mock response layer.
 
 ## Run it
