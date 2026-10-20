@@ -9,6 +9,50 @@ export class ApiError extends Error {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 15_000;
+const MAX_SAFE_RETRIES = 2;
+const RETRYABLE_STATUSES = new Set([408, 425, 429, 502, 503, 504]);
+
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+function retryAfterMs(res: Response): number {
+  const raw = res.headers.get("Retry-After");
+  if (!raw) return 0;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return Math.min(5_000, Math.max(0, seconds * 1_000));
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? 0 : Math.min(5_000, Math.max(0, at - Date.now()));
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function request(input: RequestInfo | URL, init: RequestInit, safeRetry: boolean): Promise<Response> {
+  const attempts = safeRetry ? MAX_SAFE_RETRIES + 1 : 1;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const res = await fetchWithTimeout(input, init);
+      if (!safeRetry || !RETRYABLE_STATUSES.has(res.status) || attempt === attempts - 1) return res;
+      const wait = retryAfterMs(res) || Math.min(2_000, 250 * 2 ** attempt + Math.random() * 250);
+      await sleep(wait);
+      continue;
+    } catch (err) {
+      lastError = err;
+      if (!safeRetry || attempt === attempts - 1) throw err;
+      await sleep(Math.min(2_000, 250 * 2 ** attempt + Math.random() * 250));
+    }
+  }
+  throw lastError ?? new Error("Request failed");
+}
+
 let accessToken: string | null = null;
 let onSessionLost: (() => void) | null = null;
 let refreshing: Promise<boolean> | null = null;
@@ -29,7 +73,7 @@ async function parseError(res: Response): Promise<ApiError> {
 export async function refreshSession(): Promise<boolean> {
   refreshing ??= (async () => {
     try {
-      const res = await fetch("/api/v1/auth/refresh", { method: "POST", credentials: "include" });
+      const res = await fetchWithTimeout("/api/v1/auth/refresh", { method: "POST", credentials: "include" });
       if (!res.ok) return false;
       accessToken = (await res.json()).access_token;
       return true;
@@ -50,11 +94,12 @@ export async function api<T = unknown>(path: string, opts: Opts = {}, retried = 
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   if (opts.auth !== false && accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
-  const res = await fetch(url, {
-    method: opts.method ?? (opts.body !== undefined ? "POST" : "GET"),
+  const method = (opts.method ?? (opts.body !== undefined ? "POST" : "GET")).toUpperCase();
+  const res = await request(url, {
+    method,
     headers, credentials: "include",
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  });
+  }, method === "GET" || method === "HEAD" || method === "OPTIONS");
 
   if (res.status === 401 && opts.auth !== false && !retried) {
     if (await refreshSession()) return api<T>(path, opts, true);
