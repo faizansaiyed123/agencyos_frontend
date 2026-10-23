@@ -7,6 +7,9 @@ dist/
 # Test scripts and results
 test-results/
 playwright-report/
+*.mjs
+scratch_*.mjs
+cookies.txt
 
 # Cache
 tsconfig.tsbuildinfo

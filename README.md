@@ -24,6 +24,9 @@ same host behind one reverse proxy.
 
 ## Screens
 
+> [!TIP]
+> **Visual Verification Showcase**: Full side-by-side visual audits comparing every module before data injection (empty state) against populated states (along with mobile responsive screenshots) are available in [VISUAL_VERIFICATION.md](./VISUAL_VERIFICATION.md).
+
 | Area | What you can do |
 |---|---|
 | Sign-in | Login, password recovery, create organisation, accept invite, two-factor step, silent token refresh |
