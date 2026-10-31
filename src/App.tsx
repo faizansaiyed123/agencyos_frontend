@@ -19,13 +19,25 @@ import Settings from "./pages/Settings";
 import Work from "./pages/Work";
 import Portal from "./pages/Portal";
 
-function Guard({ perm, clientOnly, children }: { perm?: Perm; clientOnly?: boolean; children: ReactNode }) {
+function Guard({
+  perm,
+  clientOnly,
+  children,
+}: {
+  perm?: Perm;
+  clientOnly?: boolean;
+  children: ReactNode;
+}) {
   const { user } = useAuth();
   if (clientOnly && user?.role !== "client") {
     return <Navigate to="/" replace />;
   }
   if (perm && !can(user?.role, perm)) {
-    return <div className="empty"><strong>You don't have access to this page</strong>Ask an admin if you need it.</div>;
+    return (
+      <div className="empty">
+        <strong>You don't have access to this page</strong>Ask an admin if you need it.
+      </div>
+    );
   }
   return <>{children}</>;
 }
@@ -55,21 +67,119 @@ export default function App() {
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route element={<Private />}>
         <Route index element={<HomeRedirect />} />
-        <Route path="portal" element={<Guard clientOnly><Portal /></Guard>} />
-        <Route path="clients" element={<Guard perm="client:read"><Clients /></Guard>} />
-        <Route path="clients/:id" element={<Guard perm="client:read"><ClientDetail /></Guard>} />
-        <Route path="deals" element={<Guard perm="deal:read"><Pipeline /></Guard>} />
-        <Route path="deals/:id" element={<Guard perm="deal:read"><DealDetail /></Guard>} />
-        <Route path="proposals" element={<Guard perm="proposal:read"><Proposals /></Guard>} />
-        <Route path="proposals/:id" element={<Guard perm="proposal:read"><ProposalDetail /></Guard>} />
-        <Route path="projects" element={<Guard perm="project:read"><Projects /></Guard>} />
-        <Route path="projects/:id" element={<Guard perm="project:read"><ProjectDetail /></Guard>} />
-        <Route path="work" element={<Guard perm="time:log"><Work /></Guard>} />
-        <Route path="invoices" element={<Guard perm="invoice:read"><Invoices /></Guard>} />
-        <Route path="invoices/:id" element={<Guard perm="invoice:read"><InvoiceDetail /></Guard>} />
-        <Route path="reports" element={<Guard perm="report:read"><Reports /></Guard>} />
+        <Route
+          path="portal"
+          element={
+            <Guard clientOnly>
+              <Portal />
+            </Guard>
+          }
+        />
+        <Route
+          path="clients"
+          element={
+            <Guard perm="client:read">
+              <Clients />
+            </Guard>
+          }
+        />
+        <Route
+          path="clients/:id"
+          element={
+            <Guard perm="client:read">
+              <ClientDetail />
+            </Guard>
+          }
+        />
+        <Route
+          path="deals"
+          element={
+            <Guard perm="deal:read">
+              <Pipeline />
+            </Guard>
+          }
+        />
+        <Route
+          path="deals/:id"
+          element={
+            <Guard perm="deal:read">
+              <DealDetail />
+            </Guard>
+          }
+        />
+        <Route
+          path="proposals"
+          element={
+            <Guard perm="proposal:read">
+              <Proposals />
+            </Guard>
+          }
+        />
+        <Route
+          path="proposals/:id"
+          element={
+            <Guard perm="proposal:read">
+              <ProposalDetail />
+            </Guard>
+          }
+        />
+        <Route
+          path="projects"
+          element={
+            <Guard perm="project:read">
+              <Projects />
+            </Guard>
+          }
+        />
+        <Route
+          path="projects/:id"
+          element={
+            <Guard perm="project:read">
+              <ProjectDetail />
+            </Guard>
+          }
+        />
+        <Route
+          path="work"
+          element={
+            <Guard perm="time:log">
+              <Work />
+            </Guard>
+          }
+        />
+        <Route
+          path="invoices"
+          element={
+            <Guard perm="invoice:read">
+              <Invoices />
+            </Guard>
+          }
+        />
+        <Route
+          path="invoices/:id"
+          element={
+            <Guard perm="invoice:read">
+              <InvoiceDetail />
+            </Guard>
+          }
+        />
+        <Route
+          path="reports"
+          element={
+            <Guard perm="report:read">
+              <Reports />
+            </Guard>
+          }
+        />
         <Route path="settings" element={<Settings />} />
-        <Route path="team" element={<Guard perm="user:read"><Team /></Guard>} />
+        <Route
+          path="team"
+          element={
+            <Guard perm="user:read">
+              <Team />
+            </Guard>
+          }
+        />
         <Route path="security" element={<Security />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

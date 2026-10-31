@@ -13,8 +13,12 @@ function ProposalCard({
   validUntil,
   onOpen,
 }: {
-  title: string; status: ProposalStatus; currency: string; total: number;
-  validUntil: string | null; onOpen: () => void;
+  title: string;
+  status: ProposalStatus;
+  currency: string;
+  total: number;
+  validUntil: string | null;
+  onOpen: () => void;
 }) {
   return (
     <button className="portal-card" onClick={onOpen}>
@@ -23,7 +27,9 @@ function ProposalCard({
         <StatusBadge status={status} />
       </div>
       <div className="portal-card-value">{money(total, currency)}</div>
-      <div className="muted">{validUntil ? `Valid until ${fmtDate(validUntil)}` : "No expiry date"}</div>
+      <div className="muted">
+        {validUntil ? `Valid until ${fmtDate(validUntil)}` : "No expiry date"}
+      </div>
     </button>
   );
 }
@@ -38,11 +44,14 @@ export default function Portal() {
         method: "POST",
         body: decision === "reject" ? { reason } : undefined,
       }),
-    ["portal-overview", "portal-proposals", "portal-proposal"]
+    ["portal-overview", "portal-proposals", "portal-proposal"],
   );
 
   if (q.isLoading) return <Spinner />;
-  if (!q.data) return <Empty title="Portal unavailable">Your client relationship is not configured yet.</Empty>;
+  if (!q.data)
+    return (
+      <Empty title="Portal unavailable">Your client relationship is not configured yet.</Empty>
+    );
 
   const { client, projects, proposals, invoices } = q.data;
   const openProposals = proposals.filter((p) => p.status === "sent");
@@ -70,17 +79,30 @@ export default function Portal() {
           <p>{client.industry || "Your AgencyOS workspace"}</p>
         </div>
         <div className="portal-hero-stats">
-          <span><b>{projects.length}</b> projects</span>
-          <span><b>{openProposals.length}</b> proposals to review</span>
-          <span><b>{money(outstanding)}</b> outstanding</span>
+          <span>
+            <b>{projects.length}</b> projects
+          </span>
+          <span>
+            <b>{openProposals.length}</b> proposals to review
+          </span>
+          <span>
+            <b>{money(outstanding)}</b> outstanding
+          </span>
         </div>
       </div>
 
       <div className="portal-grid">
         <section className="panel">
-          <header><h3>Proposals</h3><span className="muted">{proposals.length}</span></header>
+          <header>
+            <h3>Proposals</h3>
+            <span className="muted">{proposals.length}</span>
+          </header>
           <div className="body">
-            {!proposals.length ? <Empty title="Nothing to review">New proposals will appear here when your agency sends them.</Empty> : (
+            {!proposals.length ? (
+              <Empty title="Nothing to review">
+                New proposals will appear here when your agency sends them.
+              </Empty>
+            ) : (
               <div className="portal-stack">
                 {proposals.map((p) => (
                   <ProposalCard
@@ -99,14 +121,25 @@ export default function Portal() {
         </section>
 
         <section className="panel">
-          <header><h3>Projects</h3><span className="muted">{projects.length}</span></header>
+          <header>
+            <h3>Projects</h3>
+            <span className="muted">{projects.length}</span>
+          </header>
           <div className="body">
-            {!projects.length ? <Empty title="No projects yet">Accepted work will appear here.</Empty> : (
+            {!projects.length ? (
+              <Empty title="No projects yet">Accepted work will appear here.</Empty>
+            ) : (
               <div className="portal-list">
                 {projects.map((p) => (
                   <div className="portal-row" key={p.id}>
-                    <div><strong>{p.name}</strong><div className="muted">{p.description || "Project"}</div></div>
-                    <div className="right-stack"><span className="badge blue">{label(p.status)}</span>{p.due_date && <span className="muted">{fmtDate(p.due_date)}</span>}</div>
+                    <div>
+                      <strong>{p.name}</strong>
+                      <div className="muted">{p.description || "Project"}</div>
+                    </div>
+                    <div className="right-stack">
+                      <span className="badge blue">{label(p.status)}</span>
+                      {p.due_date && <span className="muted">{fmtDate(p.due_date)}</span>}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -115,17 +148,36 @@ export default function Portal() {
         </section>
 
         <section className="panel">
-          <header><h3>Invoices</h3><span className="muted">{invoices.length}</span></header>
+          <header>
+            <h3>Invoices</h3>
+            <span className="muted">{invoices.length}</span>
+          </header>
           <div className="body">
-            {!invoices.length ? <Empty title="No invoices yet">Issued invoices will appear here.</Empty> : (
+            {!invoices.length ? (
+              <Empty title="No invoices yet">Issued invoices will appear here.</Empty>
+            ) : (
               <div className="portal-list">
                 {invoices.map((i) => (
                   <div className="portal-row" key={i.id}>
-                    <div><strong>{i.number || "Invoice"}</strong><div className="muted">{i.due_date ? `Due ${fmtDate(i.due_date)}` : "No due date"}</div></div>
+                    <div>
+                      <strong>{i.number || "Invoice"}</strong>
+                      <div className="muted">
+                        {i.due_date ? `Due ${fmtDate(i.due_date)}` : "No due date"}
+                      </div>
+                    </div>
                     <div className="right-stack">
-                      <span className={`badge ${i.status === "paid" ? "moss" : i.balance_cents > 0 ? "sun" : ""}`}>{label(i.status)}</span>
+                      <span
+                        className={`badge ${i.status === "paid" ? "moss" : i.balance_cents > 0 ? "sun" : ""}`}
+                      >
+                        {label(i.status)}
+                      </span>
                       <strong>{money(i.balance_cents, i.currency)}</strong>
-                      <button className="btn sm ghost" onClick={() => downloadInvoice(i.id, i.number)}>PDF</button>
+                      <button
+                        className="btn sm ghost"
+                        onClick={() => downloadInvoice(i.id, i.number)}
+                      >
+                        PDF
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -136,24 +188,56 @@ export default function Portal() {
       </div>
 
       {selected && (
-        <div className="scrim" role="presentation" onMouseDown={(e) => { if (e.currentTarget === e.target) setSelected(null); }}>
-          <div className="modal portal-modal" role="dialog" aria-modal="true" aria-label="Proposal details">
-            {detail.isLoading ? <Spinner /> : !detail.data ? <Empty title="Proposal unavailable" /> : (
+        <div
+          className="scrim"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.currentTarget === e.target) setSelected(null);
+          }}
+        >
+          <div
+            className="modal portal-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Proposal details"
+          >
+            {detail.isLoading ? (
+              <Spinner />
+            ) : !detail.data ? (
+              <Empty title="Proposal unavailable" />
+            ) : (
               <>
                 <div className="modal-head-row">
-                  <div><div className="eyebrow">Proposal</div><h2>{detail.data.proposal.title}</h2></div>
-                  <button className="btn ghost" onClick={() => setSelected(null)}>Close</button>
+                  <div>
+                    <div className="eyebrow">Proposal</div>
+                    <h2>{detail.data.proposal.title}</h2>
+                  </div>
+                  <button className="btn ghost" onClick={() => setSelected(null)}>
+                    Close
+                  </button>
                 </div>
-                <div className="portal-total">{money(detail.data.proposal.total_amount, detail.data.proposal.currency)}</div>
+                <div className="portal-total">
+                  {money(detail.data.proposal.total_amount, detail.data.proposal.currency)}
+                </div>
                 <div className="portal-items">
                   {detail.data.items.map((item) => (
                     <div className="portal-row" key={item.id}>
-                      <div><strong>{item.description}</strong><div className="muted">{item.quantity} × {money(item.unit_amount, detail.data!.proposal.currency)}</div></div>
+                      <div>
+                        <strong>{item.description}</strong>
+                        <div className="muted">
+                          {item.quantity} ×{" "}
+                          {money(item.unit_amount, detail.data!.proposal.currency)}
+                        </div>
+                      </div>
                       <strong>{money(item.amount, detail.data.proposal.currency)}</strong>
                     </div>
                   ))}
                 </div>
-                {detail.data.proposal.rejection_reason && <div className="notice">Previous response: {detail.data.proposal.rejection_reason}</div>}
+                {detail.data.proposal.rejection_reason && (
+                  <div className="notice">
+                    Previous response: {detail.data.proposal.rejection_reason}
+                  </div>
+                )}
                 <ErrorNote error={decide.error} />
                 {detail.data.proposal.status === "sent" && (
                   <div className="actions">
@@ -162,7 +246,12 @@ export default function Portal() {
                       disabled={decide.isPending}
                       onClick={() => {
                         const reason = window.prompt("What would you like changed?");
-                        if (reason?.trim()) decide.mutate({ id: detail.data!.proposal.id, decision: "reject", reason: reason.trim() });
+                        if (reason?.trim())
+                          decide.mutate({
+                            id: detail.data!.proposal.id,
+                            decision: "reject",
+                            reason: reason.trim(),
+                          });
                       }}
                     >
                       Request changes
