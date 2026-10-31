@@ -3,8 +3,12 @@
 // silent refresh, then retry the original request.
 
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string,
-    public fields?: { field: string; message: string }[]) {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+    public fields?: { field: string; message: string }[],
+  ) {
     super(message);
   }
 }
@@ -24,7 +28,11 @@ function retryAfterMs(res: Response): number {
   return Number.isNaN(at) ? 0 : Math.min(5_000, Math.max(0, at - Date.now()));
 }
 
-async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<Response> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -34,7 +42,11 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
   }
 }
 
-async function request(input: RequestInfo | URL, init: RequestInit, safeRetry: boolean): Promise<Response> {
+async function request(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  safeRetry: boolean,
+): Promise<Response> {
   const attempts = safeRetry ? MAX_SAFE_RETRIES + 1 : 1;
   let lastError: unknown = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -57,33 +69,57 @@ let accessToken: string | null = null;
 let onSessionLost: (() => void) | null = null;
 let refreshing: Promise<boolean> | null = null;
 
-export const setAccessToken = (t: string | null) => { accessToken = t; };
+export const setAccessToken = (t: string | null) => {
+  accessToken = t;
+};
 export const getAccessToken = () => accessToken;
-export const setSessionLostHandler = (fn: () => void) => { onSessionLost = fn; };
+export const setSessionLostHandler = (fn: () => void) => {
+  onSessionLost = fn;
+};
 
 async function parseError(res: Response): Promise<ApiError> {
   let body: any = null;
-  try { body = await res.json(); } catch { /* non-JSON error */ }
+  try {
+    body = await res.json();
+  } catch {
+    /* non-JSON error */
+  }
   const fields = Array.isArray(body?.errors) ? body.errors : undefined;
   const detail = typeof body?.detail === "string" ? body.detail : res.statusText;
-  const msg = fields?.length ? fields.map((f: any) => `${f.field}: ${f.message}`).join("; ") : detail;
+  const msg = fields?.length
+    ? fields.map((f: any) => `${f.field}: ${f.message}`).join("; ")
+    : detail;
   return new ApiError(res.status, body?.code ?? "error", msg, fields);
 }
 
 export async function refreshSession(): Promise<boolean> {
   refreshing ??= (async () => {
     try {
-      const res = await fetchWithTimeout("/api/v1/auth/refresh", { method: "POST", credentials: "include" });
+      const res = await fetchWithTimeout("/api/v1/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+      });
       if (!res.ok) return false;
       accessToken = (await res.json()).access_token;
       return true;
-    } catch { return false; }
-    finally { setTimeout(() => { refreshing = null; }, 0); }
+    } catch {
+      return false;
+    } finally {
+      setTimeout(() => {
+        refreshing = null;
+      }, 0);
+    }
   })();
   return refreshing;
 }
 
-interface Opts { method?: string; body?: unknown; query?: Record<string, unknown>; headers?: Record<string, string>; auth?: boolean }
+interface Opts {
+  method?: string;
+  body?: unknown;
+  query?: Record<string, unknown>;
+  headers?: Record<string, string>;
+  auth?: boolean;
+}
 
 export async function api<T = unknown>(path: string, opts: Opts = {}, retried = false): Promise<T> {
   const url = new URL(`/api/v1${path}`, window.location.origin);
@@ -95,11 +131,16 @@ export async function api<T = unknown>(path: string, opts: Opts = {}, retried = 
   if (opts.auth !== false && accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   const method = (opts.method ?? (opts.body !== undefined ? "POST" : "GET")).toUpperCase();
-  const res = await request(url, {
-    method,
-    headers, credentials: "include",
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  }, method === "GET" || method === "HEAD" || method === "OPTIONS");
+  const res = await request(
+    url,
+    {
+      method,
+      headers,
+      credentials: "include",
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    },
+    method === "GET" || method === "HEAD" || method === "OPTIONS",
+  );
 
   if (res.status === 401 && opts.auth !== false && !retried) {
     if (await refreshSession()) return api<T>(path, opts, true);
@@ -111,16 +152,24 @@ export async function api<T = unknown>(path: string, opts: Opts = {}, retried = 
   return res.json() as Promise<T>;
 }
 
-export async function apiBlob(path: string, opts: { method?: string; headers?: Record<string, string> } = {}, retried = false): Promise<Blob> {
+export async function apiBlob(
+  path: string,
+  opts: { method?: string; headers?: Record<string, string> } = {},
+  retried = false,
+): Promise<Blob> {
   const url = new URL(`/api/v1${path}`, window.location.origin);
   const headers: Record<string, string> = { ...opts.headers };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   const method = (opts.method ?? "GET").toUpperCase();
-  const res = await request(url, {
-    method,
-    headers,
-    credentials: "include",
-  }, method === "GET" || method === "HEAD" || method === "OPTIONS");
+  const res = await request(
+    url,
+    {
+      method,
+      headers,
+      credentials: "include",
+    },
+    method === "GET" || method === "HEAD" || method === "OPTIONS",
+  );
 
   if (res.status === 401 && !retried) {
     if (await refreshSession()) return apiBlob(path, opts, true);

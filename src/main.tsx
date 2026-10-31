@@ -9,8 +9,11 @@ import "./styles.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 15_000, refetchOnWindowFocus: false,
-      retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 2 },
+    queries: {
+      staleTime: 15_000,
+      refetchOnWindowFocus: false,
+      retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 2,
+    },
   },
 });
 
@@ -18,7 +21,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AuthProvider><App /></AuthProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,
