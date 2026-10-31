@@ -1,0 +1,50 @@
+name: Temporary formatting automation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Apply Prettier formatting
+        run: npm run format
+
+      - name: Verify Prettier formatting
+        run: npm run format:check
+
+      - name: Verify patch whitespace
+        run: git diff --check
+
+      - name: Commit formatting changes
+        env:
+          BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes are required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json .prettierrc.json .prettierignore src e2e index.html playwright.config.ts vite.config.ts .github/workflows
+          git commit -m "Apply Prettier formatting"
+          git push origin "HEAD:${BRANCH_NAME}"
