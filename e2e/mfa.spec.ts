@@ -104,5 +104,6 @@ test("authenticator enrollment and sign-in use time-based one-time passwords", a
     status: 401,
     code: "invalid_credentials",
   });
+  await page.goto("/security");
   await expect(page.getByText("On", { exact: true })).toBeVisible();
 });
