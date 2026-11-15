@@ -56,12 +56,12 @@ async function writeSnapshot(state: DemoState): Promise<void> {
     }
     return;
   }
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
     tx.objectStore(STORE_NAME).put(state, SNAPSHOT_KEY);
     tx.oncomplete = () => resolve();
-    tx.onerror = () => resolve();
-    tx.onabort = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("Workspace snapshot could not be saved"));
+    tx.onabort = () => reject(tx.error ?? new Error("Workspace snapshot save was aborted"));
   });
 }
 
@@ -105,8 +105,9 @@ export async function withDemoState<T>(operation: (state: DemoState) => T | Prom
 
 export async function resetDemoState(): Promise<void> {
   const next = writeQueue.then(async () => {
-    cachedState = createSeedState();
-    await writeSnapshot(cachedState);
+    const fresh = createSeedState();
+    await writeSnapshot(fresh);
+    cachedState = fresh;
   });
   writeQueue = next.catch(() => undefined);
   await next;
