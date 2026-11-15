@@ -368,6 +368,7 @@ export interface WebhookDelivery {
   response_status: number | null;
   last_error: string | null;
   created_at: string;
+  local_simulation?: boolean;
 }
 export interface FlagRow {
   key: string;
