@@ -274,6 +274,178 @@ function PaymentForm({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
   );
 }
 
+function CreditNoteForm({
+  inv,
+  maxCents,
+  onClose,
+}: {
+  inv: Invoice;
+  maxCents: number;
+  onClose: () => void;
+}) {
+  const [f, setF] = useState({
+    amount: String(maxCents / 100),
+    issued_on: todayISO(),
+    reason: "",
+  });
+  const create = useAction(
+    () =>
+      api(`/invoices/${inv.id}/credit-notes`, {
+        body: {
+          amount_cents: toCents(f.amount),
+          issued_on: f.issued_on,
+          reason: f.reason.trim(),
+        },
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+      }),
+    ["invoice", "invoices", "overview", "attention", "portal-credit-notes"],
+  );
+  return (
+    <FormModal
+      title="Issue a credit note"
+      submitLabel="Issue credit note"
+      onClose={onClose}
+      onSubmit={() => create.mutateAsync(undefined)}
+    >
+      <p style={{ marginTop: 0 }}>
+        This permanently reduces the invoice amount owed. The remaining creditable amount is{" "}
+        <strong>{money(maxCents, inv.currency)}</strong>. Any cash returned is recorded separately.
+      </p>
+      <div className="grid2">
+        <Field label="Credit amount">
+          <input
+            type="number"
+            min="0.01"
+            max={maxCents / 100}
+            step="0.01"
+            value={f.amount}
+            onChange={(e) => setF({ ...f, amount: e.target.value })}
+            required
+            autoFocus
+          />
+        </Field>
+        <Field label="Issue date">
+          <input
+            type="date"
+            max={todayISO()}
+            value={f.issued_on}
+            onChange={(e) => setF({ ...f, issued_on: e.target.value })}
+            required
+          />
+        </Field>
+      </div>
+      <Field label="Reason">
+        <textarea
+          value={f.reason}
+          onChange={(e) => setF({ ...f, reason: e.target.value })}
+          minLength={3}
+          maxLength={1000}
+          required
+        />
+      </Field>
+    </FormModal>
+  );
+}
+
+function RefundForm({
+  inv,
+  payment,
+  remainingCents,
+  onClose,
+}: {
+  inv: Invoice;
+  payment: Payment;
+  remainingCents: number;
+  onClose: () => void;
+}) {
+  const [f, setF] = useState({
+    amount: String(remainingCents / 100),
+    refunded_on: todayISO(),
+    method: payment.method,
+    reference: "",
+    reason: "",
+  });
+  const [key] = useState(() => crypto.randomUUID());
+  const create = useAction(
+    () =>
+      api(`/invoices/${inv.id}/payments/${payment.id}/refunds`, {
+        body: {
+          amount_cents: toCents(f.amount),
+          refunded_on: f.refunded_on,
+          method: f.method,
+          reference: f.reference || null,
+          reason: f.reason.trim(),
+        },
+        headers: { "Idempotency-Key": key },
+      }),
+    ["invoice", "invoices", "overview", "attention", "portal-overview"],
+  );
+  return (
+    <FormModal
+      title="Record a payment refund"
+      submitLabel="Record refund"
+      onClose={onClose}
+      onSubmit={() => create.mutateAsync(undefined)}
+    >
+      <p style={{ marginTop: 0 }}>
+        Record a refund that has already been processed outside AgencyOS. This form does not initiate
+        a transfer. The remaining refundable amount for this payment is{" "}
+        <strong>{money(remainingCents, inv.currency)}</strong>.
+      </p>
+      <div className="grid2">
+        <Field label="Refund amount">
+          <input
+            type="number"
+            min="0.01"
+            max={remainingCents / 100}
+            step="0.01"
+            value={f.amount}
+            onChange={(e) => setF({ ...f, amount: e.target.value })}
+            required
+            autoFocus
+          />
+        </Field>
+        <Field label="Refund date">
+          <input
+            type="date"
+            max={todayISO()}
+            value={f.refunded_on}
+            onChange={(e) => setF({ ...f, refunded_on: e.target.value })}
+            required
+          />
+        </Field>
+      </div>
+      <div className="grid2">
+        <Field label="Refund method">
+          <select value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}>
+            {["bank_transfer", "card", "cash", "other"].map((method) => (
+              <option key={method} value={method}>
+                {label(method)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Processor / bank reference">
+          <input
+            value={f.reference}
+            maxLength={200}
+            onChange={(e) => setF({ ...f, reference: e.target.value })}
+          />
+        </Field>
+      </div>
+      <Field label="Reason">
+        <textarea
+          value={f.reason}
+          onChange={(e) => setF({ ...f, reason: e.target.value })}
+          minLength={3}
+          maxLength={1000}
+          required
+        />
+      </Field>
+    </FormModal>
+  );
+}
+
 function LineForm({ id, onClose }: { id: string; onClose: () => void }) {
   const [f, setF] = useState({ description: "", quantity: "1", unit: "" });
   const add = useAction(
