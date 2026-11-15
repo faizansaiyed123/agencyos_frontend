@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-async function acceptInvitation(page: import("@playwright/test").Page, invitee: string, name: string) {
+async function acceptInvitation(page: import("@playwright/test").Page, name: string) {
   await page.getByRole("link", { name: "Open invite" }).click();
   await expect(page).toHaveURL(/\/accept-invite\?token=/);
   await page.getByRole("button", { name: "Sign out and continue" }).click();
@@ -9,7 +9,6 @@ async function acceptInvitation(page: import("@playwright/test").Page, invitee: 
   await page.getByLabel("Password").fill("RecruiterPass2026");
   await page.getByRole("button", { name: "Accept invite" }).click();
   await expect(page.locator(".me")).toContainText(name);
-  await expect(page.locator(".me")).toContainText(invitee);
 }
 
 test("staff invitation can be created, accepted once, and signed into", async ({ page }) => {
@@ -22,7 +21,12 @@ test("staff invitation can be created, accepted once, and signed into", async ({
 
   const inviteRow = page.getByRole("row").filter({ hasText: email });
   await expect(inviteRow).toBeVisible();
-  await acceptInvitation(page, email, "New Engineer");
+  await acceptInvitation(page, "New Engineer");
+  const staffUser = await page.evaluate(async () => {
+    const { api } = await import("/src/api/client.ts");
+    return await api("/auth/me");
+  });
+  expect(staffUser).toMatchObject({ email, role: "team_member" });
 
   await expect(page.getByRole("link", { name: "My work", exact: true })).toBeVisible();
   await page.reload();
@@ -49,7 +53,11 @@ test("client invitation is bound to its client and opens only the client portal"
   await expect(page).toHaveURL(/\/portal$/);
   await expect(page.getByRole("heading", { name: "Acme Global", level: 1 })).toBeVisible();
   await expect(page.getByRole("link", { name: "Clients", exact: true })).toHaveCount(0);
-  await expect(page.locator(".me")).toContainText(email);
+  const clientUser = await page.evaluate(async () => {
+    const { api } = await import("/src/api/client.ts");
+    return await api("/auth/me");
+  });
+  expect(clientUser).toMatchObject({ email, role: "client" });
 });
 
 test("role management enforces owner and client-role rules", async ({ page }) => {
