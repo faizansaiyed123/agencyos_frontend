@@ -220,8 +220,8 @@ function CreditNoteForm({ inv, onClose }: { inv: Invoice; onClose: () => void })
       onSubmit={() => create.mutateAsync(undefined)}
     >
       <p style={{ marginTop: 0 }}>
-        This permanently reduces the invoice receivable. Any amount credited beyond
-        the net amount still owed becomes a client credit balance.
+        This permanently reduces the invoice receivable. Any amount credited beyond the net amount
+        still owed becomes a client credit balance.
       </p>
       <Field label="Credit amount">
         <input
@@ -314,10 +314,7 @@ function RefundForm({
         </Field>
       </div>
       <Field label="Reference">
-        <input
-          value={f.reference}
-          onChange={(e) => setF({ ...f, reference: e.target.value })}
-        />
+        <input value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} />
       </Field>
       <Field label="Reason">
         <textarea
@@ -830,10 +827,7 @@ export function InvoiceDetail() {
                         </td>
                         <td className="num">
                           {manage && refundable > 0 && inv.status !== "void" && (
-                            <button
-                              className="btn sm ghost"
-                              onClick={() => setRefundingPayment(p)}
-                            >
+                            <button className="btn sm ghost" onClick={() => setRefundingPayment(p)}>
                               Refund
                             </button>
                           )}
