@@ -43,15 +43,13 @@ function NewProposal({ presetDeal, onClose }: { presetDeal?: string; onClose: ()
     <FormModal
       title="New proposal"
       submitLabel="Create draft"
-      onClose={onClose}
+      onClose={() => {
+        if (!created.current) onClose();
+      }}
       onSubmit={async () => {
-        console.info("[proposal-ui] submit started", { dealId, title });
         const p = await create.mutateAsync(undefined);
         created.current = true;
         nav(`/proposals/${(p as Proposal).id}`);
-      }}
-      onClose={() => {
-        if (!created.current) onClose();
       }}
     >
       <Field label="Deal">
