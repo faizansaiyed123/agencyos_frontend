@@ -1,7 +1,6 @@
-// Thin fetch wrapper. The access token lives in memory only; the refresh token
-// is an httpOnly cookie the browser sends to /api/v1/auth/*. On a 401 we try one
-// silent refresh, then retry the original request. The public portfolio runtime uses
-// a browser-local API implementation, so no API server or backend deployment is needed.
+// API-compatible fetch wrapper for the browser workspace. Requests retain the
+// /api/v1 contract but are handled locally; no HTTP API server or refresh cookie
+// is used in this frontend-only deployment.
 
 import { demoFetch } from "../demo/runtime";
 
