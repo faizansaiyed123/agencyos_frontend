@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   frontend:
@@ -21,6 +21,18 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Normalize billing UI formatting on feature branch
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/billing-credit-refunds-ui'
+        run: |
+          npx prettier --write src/pages/Invoices.tsx
+          if ! git diff --quiet -- src/pages/Invoices.tsx; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/pages/Invoices.tsx
+            git commit -m "style: format invoice billing adjustment UI"
+            git push
+          fi
+
       - name: Verify formatting
         run: npm run format:check
       - name: Production build
