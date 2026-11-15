@@ -59,7 +59,7 @@ demonstration behavior, not a server-side security boundary.
 
 ## Recruiter workspace
 
-The `recruiter-demo` branch contains a self-contained browser workspace. The frontend calls
+The `demo` branch contains a self-contained browser workspace. The frontend calls
 an API-compatible local runtime, executes the product's business rules, and persists records
 in IndexedDB. It does not require a backend URL, database, worker process, or deployed API.
 
@@ -68,6 +68,6 @@ reference for route contracts, data shapes, permissions and business workflows.
 
 ## Release verification
 
-The recruiter-demo GitHub Actions workflow verifies the frontend production build,
+The demo GitHub Actions workflow verifies the frontend production build,
 Playwright browser journeys and frontend container build. It does not install, start,
 test or deploy the backend.
