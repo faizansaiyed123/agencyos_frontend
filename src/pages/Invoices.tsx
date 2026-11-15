@@ -297,6 +297,7 @@ function CreditNoteForm({
     issued_on: todayISO(),
     reason: "",
   });
+  const [key] = useState(() => crypto.randomUUID());
   const create = useAction(
     () =>
       api(`/invoices/${inv.id}/credit-notes`, {
@@ -305,7 +306,7 @@ function CreditNoteForm({
           issued_on: f.issued_on,
           reason: f.reason.trim(),
         },
-        headers: { "Idempotency-Key": crypto.randomUUID() },
+        headers: { "Idempotency-Key": key },
       }),
     ["invoice", "invoices", "overview", "attention", "portal-overview", "portal-credit-notes"],
   );
@@ -578,7 +579,10 @@ export function InvoiceDetail() {
       (m) => m.amount_cents && !lines.some((l) => l.milestone_id === m.id),
     ) ?? [];
   const creditableCents = inv.total_cents - inv.credit_note_cents;
-  const canIssueCredit = manage && !["draft", "void", "credited"].includes(inv.status) && creditableCents > 0;
+  const canIssueCredit =
+    manage &&
+    !["draft", "void", "credited"].includes(inv.status) &&
+    creditableCents > 0;
   const downloadCreditNote = async (note: CreditNote) => {
     const blob = await apiBlob(`/credit-notes/${note.id}/pdf`);
     const url = URL.createObjectURL(blob);
@@ -680,8 +684,8 @@ export function InvoiceDetail() {
       )}
       {inv.status === "credited" && (
         <div className="notice">
-          This invoice has been fully credited. Any cash returned to the client is recorded separately
-          in the refund ledger.
+          This invoice has been fully credited. Any cash returned to the client is recorded
+          separately in the refund ledger.
         </div>
       )}
       <div className="cols">
@@ -830,7 +834,10 @@ export function InvoiceDetail() {
                 <tbody>
                   {payments.map((p) => {
                     const paymentRefunds = refunds.filter((refund) => refund.payment_id === p.id);
-                    const refundedCents = paymentRefunds.reduce((sum, refund) => sum + refund.amount_cents, 0);
+                    const refundedCents = paymentRefunds.reduce(
+                      (sum, refund) => sum + refund.amount_cents,
+                      0,
+                    );
                     const remainingCents = Math.max(p.amount_cents - refundedCents, 0);
                     return (
                       <tr key={p.id}>
@@ -839,13 +846,17 @@ export function InvoiceDetail() {
                           {label(p.method)}
                           {p.reference && <div className="muted">{p.reference}</div>}
                           {refundedCents > 0 && (
-                            <div className="muted">Refunded {money(refundedCents, inv.currency)}</div>
+                            <div className="muted">
+                              Refunded {money(refundedCents, inv.currency)}
+                            </div>
                           )}
                         </td>
                         <td className="num">{money(p.amount_cents, inv.currency)}</td>
                         {manage && (
                           <td className="num">
-                            {remainingCents > 0 && inv.status !== "draft" && inv.status !== "void" && (
+                            {remainingCents > 0 &&
+                              inv.status !== "draft" &&
+                              inv.status !== "void" && (
                               <button
                                 className="btn sm ghost"
                                 onClick={() => setRefundTarget({ payment: p, remainingCents })}
@@ -870,8 +881,8 @@ export function InvoiceDetail() {
               </header>
               <div className="body">
                 <p className="muted">
-                  These entries record refunds already processed outside AgencyOS. They do not initiate
-                  a transfer.
+                  These entries record refunds already processed outside AgencyOS. They do not
+                  initiate a transfer.
                 </p>
                 <table>
                   <thead>
