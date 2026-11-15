@@ -170,6 +170,7 @@ export default function Team() {
                     <td>{ROLE_LABEL[i.role]}</td>
                     <td className="muted">Expires {fmtDate(i.expires_at)}</td>
                     <td className="num">
+                      {i.local_accept_url && <a className="btn sm ghost" href={i.local_accept_url}>Open invite</a>}{" "}
                       <button className="btn sm danger" onClick={() => revoke.mutate(i.id)}>
                         Revoke
                       </button>
