@@ -228,7 +228,7 @@ export function Signup() {
 }
 
 export function AcceptInvite() {
-  const { user, acceptInvite } = useAuth();
+  const { user, acceptInvite, logout } = useAuth();
   const nav = useNavigate();
   const [params] = useSearchParams();
   const [f, setF] = useState({ token: params.get("token") ?? "", full_name: "", password: "" });
@@ -236,7 +236,16 @@ export function AcceptInvite() {
     await acceptInvite(f);
     nav("/");
   });
-  if (user) return <Navigate to="/" replace />;
+  if (user) {
+    return (
+      <Shell title="Invitation ready" sub="Sign out of the current workspace account to accept this invitation.">
+        <p>You can sign back in with your account after accepting the invitation.</p>
+        <button className="btn primary" onClick={() => void logout()}>
+          Sign out and continue
+        </button>
+      </Shell>
+    );
+  }
   return (
     <Shell title="Join your team" sub="Set your name and password to accept the invite.">
       <form onSubmit={submit}>
