@@ -541,14 +541,6 @@ export function InvoiceDetail() {
       }),
     inv2,
   );
-  const issueCreditNote = useAction(
-    (body: { amount_cents: number; issued_on: string; reason: string }) =>
-      api(`/invoices/${id}/credit-notes`, {
-        body,
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-      }),
-    [...inv2, "portal-credit-notes"],
-  );
   const downloadPdf = async () => {
     const blob = await apiBlob(`/invoices/${id}/pdf`);
     const url = URL.createObjectURL(blob);
@@ -669,8 +661,7 @@ export function InvoiceDetail() {
           rmLine.error ??
           setMeta.error ??
           void_.error ??
-          email.error ??
-          issueCreditNote.error
+          email.error
         }
       />
       {inv.status === "void" && (
