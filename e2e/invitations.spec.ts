@@ -16,7 +16,7 @@ test("staff invitation can be created, accepted once, and signed into", async ({
   await page.goto("/team");
   await page.getByRole("button", { name: "Invite teammate" }).click();
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Role").selectOption("team_member");
+  await page.getByLabel("Role", { exact: true }).selectOption("team_member");
   await page.getByRole("button", { name: "Send invite" }).click();
 
   const inviteRow = page.getByRole("row").filter({ hasText: email });
@@ -38,7 +38,7 @@ test("client invitation is bound to its client and opens only the client portal"
   await page.goto("/team");
   await page.getByRole("button", { name: "Invite teammate" }).click();
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Role").selectOption("client");
+  await page.getByLabel("Role", { exact: true }).selectOption("client");
   await page.getByLabel("Client account").selectOption({ label: "Acme Global" });
   await page.getByRole("button", { name: "Send invite" }).click();
 
