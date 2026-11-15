@@ -282,7 +282,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     required(body.token, "token");
     required(body.full_name, "full_name");
     required(body.password, "password");
-    if (String(body.password).length < 10 || !/[A-Z]/.test(body.password) || !/[a-z]/.test(body.password) || !/\\d/.test(body.password)) {
+    if (String(body.password).length < 10 || !/[A-Z]/.test(body.password) || !/[a-z]/.test(body.password) || !/\d/.test(body.password)) {
       invalid("Password must be at least 10 characters and include upper and lower case letters and a digit", "weak_password");
     }
     const invite = state.invites.find((candidate: AnyRecord) => candidate.token === body.token);
@@ -338,7 +338,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     const email = String(body.email).trim().toLowerCase();
     const role = String(body.role || "team_member");
     const allowedRoles = ["admin","account_manager","project_manager","team_member","finance","client"];
-    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) invalid("Enter a valid email address", "invalid_email");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) invalid("Enter a valid email address", "invalid_email");
     if (!allowedRoles.includes(role)) conflict("Invalid invitation role", "invalid_role");
     const clientId = body.client_id ?? null;
     if (role === "client" && !clientId) conflict("Client invites must be linked to a client", "client_link_required");
@@ -369,7 +369,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     needPermission(user!, "user:invite");
     return json(state.invites.filter((row: AnyRecord) => !row.revoked_at).map(({ token: _token, revoked_at: _revokedAt, ...row }: AnyRecord) => row));
   }
-  let m = match(path, /^\\/invites\\/([^/]+)$/);
+  let m = match(path, /^\/invites\/([^/]+)$/);
   if (m && method === "DELETE") {
     needPermission(user!, "user:invite");
     const invite = assertRow(state.invites, m[1], "Invite");
@@ -378,7 +378,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     audit(state, user!, "invite.revoked", "invite", invite.id);
     return empty();
   }
-  m = match(path, /^\\/users\\/([^/]+)\\/role$/);
+  m = match(path, /^\/users\/([^/]+)\/role$/);
   if (m && method === "POST") {
     needPermission(user!, "user:manage");
     if (!["owner","admin"].includes(user!.role)) throw new DemoFault(403, "forbidden", "Only an owner or admin can change roles");
