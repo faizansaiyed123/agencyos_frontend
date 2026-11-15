@@ -20,7 +20,9 @@ test("project collaboration supports comments, file storage, and approvals", asy
     mimeType: "text/plain",
     buffer: Buffer.from("AgencyOS browser workspace file attachment.\n"),
   });
-  await expect(page.getByRole("button", { name: fileName })).toBeVisible();
+  const filesPanel = page.locator(".panel").filter({ has: page.getByRole("heading", { name: "Files" }) });
+  console.log("FILE PANEL AFTER UPLOAD", await filesPanel.innerText());
+    await expect(page.getByRole("button", { name: fileName })).toBeVisible();
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),
