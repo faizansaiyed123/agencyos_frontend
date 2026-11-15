@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api, getAccessToken } from "../api/client";
+import { api, apiFetch, getAccessToken } from "../api/client";
 import { useAction, useApprovals, useComments, useFiles, useUsers } from "../api/hooks";
 import { useNames } from "../api/useNames";
 import { can } from "../api/permissions";
@@ -96,7 +96,7 @@ export function FilesPanel({ type, id }: { type: EntityType; id: string }) {
       fd.append("entity_type", type);
       fd.append("entity_id", id);
       fd.append("file", file);
-      const res = await fetch("/api/v1/files", {
+      const res = await apiFetch("/api/v1/files", {
         method: "POST",
         body: fd,
         credentials: "include",
@@ -113,7 +113,7 @@ export function FilesPanel({ type, id }: { type: EntityType; id: string }) {
 
   const download = async (fid: string, filename: string) => {
     // Authenticated download: fetch with the bearer token, then save the blob.
-    const res = await fetch(`/api/v1/files/${fid}/download`, {
+    const res = await apiFetch(`/api/v1/files/${fid}/download`, {
       credentials: "include",
       headers: { Authorization: `Bearer ${getAccessToken()}` },
     });
