@@ -85,6 +85,7 @@ export function createSeedState(): Record<string, any> {
       { id: project, client_id: acme, deal_id: dealWon, proposal_id: proposalAccepted, name: "Payment Platform Modernization", description: "Delivery workspace for the accepted proposal.", status: "active", budget_amount: 11000000, currency: "USD", start_date: date(10), due_date: date(-35), manager_user_id: projectManager, created_at: iso(12), updated_at: iso(1) },
     ],
     members: [
+      { project_id: project, user_id: owner, hourly_rate_cents: 15000 },
       { project_id: project, user_id: projectManager, hourly_rate_cents: 12500 },
       { project_id: project, user_id: teamMember, hourly_rate_cents: 9500 },
     ],
