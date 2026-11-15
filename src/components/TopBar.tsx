@@ -285,6 +285,10 @@ function WorkspaceControls() {
     { email: "jamie@agencyos.local", label: "Team member" },
     { email: "taylor@agencyos.local", label: "Finance" },
     { email: "client@agencyos.local", label: "Client portal" },
+    ...(user && ![
+      "owner@agencyos.local","admin@agencyos.local","alex@agencyos.local",
+      "sarah@agencyos.local","jamie@agencyos.local","taylor@agencyos.local","client@agencyos.local",
+    ].includes(user.email) ? [{ email: user.email, label: user.full_name + " · " + user.role.replaceAll("_", " ") }] : []),
   ];
   const switchAccount = async (email: string) => {
     if (!email || email === user?.email) return;
