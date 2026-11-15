@@ -20,6 +20,9 @@ test("client → deal → proposal acceptance creates a project and milestones",
   await page.getByLabel("Value").fill("2500");
   await page.getByRole("button", { name: "Create deal" }).click();
   await expect(page.getByRole("heading", { name: dealName })).toBeVisible();
+  console.log("DEAL DETAILS PROFILE", await page.locator(".me").innerText());
+  console.log("DEAL DETAILS MAIN", (await page.locator("main").innerText()).slice(0, 1800));
+  console.log("NEW PROPOSAL LINK COUNT", await page.getByRole("link", { name: "New proposal" }).count());
 
   await page.getByRole("link", { name: "New proposal" }).click();
   await page.getByLabel("Proposal title").fill(proposalName);
