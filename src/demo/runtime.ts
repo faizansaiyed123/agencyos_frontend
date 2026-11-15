@@ -927,12 +927,26 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (method === "POST" && path === "/notifications/stream-ticket") return json({ ticket: "local-event-stream", expires_in: 300 });
 
   if (method === "GET" && path === "/reports/overview") {
-    needPermission(user!, "report:read"); const open = state.deals.filter((d: AnyRecord) => !["won","lost"].includes(d.stage));
-    const won = state.deals.filter((d: AnyRecord) => d.stage === "won");
-    const active = state.projects.filter((p: AnyRecord) => p.status === "active");
-    const unpaid = state.invoices.filter((i: AnyRecord) => !["draft","void","paid","credited"].includes(i.status));
-    const unbilled = state.timeEntries.filter((e: AnyRecord) => e.status === "approved" && e.billable && !e.invoice_id);
-    return json({ open_pipeline_cents: sum(open.map((d: AnyRecord) => d.value_amount || 0)), won_this_month_cents: sum(won.filter((d: AnyRecord) => d.closed_at?.slice(0,7) === today().slice(0,7)).map((d: AnyRecord) => d.value_amount || 0)), won_ytd_cents: sum(won.map((d: AnyRecord) => d.value_amount || 0)), outstanding_cents: sum(unpaid.map((i: AnyRecord) => { refreshBalances(state, i); return i.balance_cents; })), overdue_cents: sum(unpaid.map((i: AnyRecord) => { refreshBalances(state, i); return i.is_overdue ? i.balance_cents : 0; })), collected_this_month_cents: sum(state.payments.filter((p: AnyRecord) => p.paid_on.slice(0,7) === today().slice(0,7)).map((p: AnyRecord) => p.amount_cents)), active_projects: active.length, unbilled_time_cents: sum(unbilled.map((e: AnyRecord) => Math.round(e.minutes / 60 * (e.rate_cents || 0)))), pending_time_approvals: state.timeEntries.filter((e: AnyRecord) => e.status === "draft").length });
+    needPermission(user!, "report:read");
+    const open = state.deals.filter((deal: AnyRecord) => !["won","lost"].includes(deal.stage));
+    const won = state.deals.filter((deal: AnyRecord) => deal.stage === "won");
+    const monthKey = today().slice(0, 7);
+    const yearKey = today().slice(0, 4);
+    const active = state.projects.filter((project: AnyRecord) => project.status === "active");
+    const unpaid = state.invoices.filter((invoice: AnyRecord) => ["sent","partially_paid"].includes(invoice.status));
+    const unbilled = state.timeEntries.filter((entry: AnyRecord) => entry.status === "approved" && entry.billable && !entry.invoice_id);
+    const pendingApprovals = state.timeEntries.filter((entry: AnyRecord) => entry.status === "draft" && Boolean(entry.ended_at));
+    return json({
+      open_pipeline_cents: sum(open.map((deal: AnyRecord) => deal.value_amount || 0)),
+      won_this_month_cents: sum(won.filter((deal: AnyRecord) => deal.closed_at?.slice(0, 7) === monthKey).map((deal: AnyRecord) => deal.value_amount || 0)),
+      won_ytd_cents: sum(won.filter((deal: AnyRecord) => deal.closed_at?.slice(0, 4) === yearKey).map((deal: AnyRecord) => deal.value_amount || 0)),
+      outstanding_cents: sum(unpaid.map((invoice: AnyRecord) => { refreshBalances(state, invoice); return invoice.balance_cents; })),
+      overdue_cents: sum(unpaid.map((invoice: AnyRecord) => { refreshBalances(state, invoice); return invoice.is_overdue ? invoice.balance_cents : 0; })),
+      collected_this_month_cents: sum(state.payments.filter((payment: AnyRecord) => payment.paid_on.slice(0, 7) === monthKey).map((payment: AnyRecord) => payment.amount_cents)),
+      active_projects: active.length,
+      unbilled_time_cents: sum(unbilled.map((entry: AnyRecord) => Math.round(entry.minutes / 60 * (entry.rate_cents || 0)))),
+      pending_time_approvals: pendingApprovals.length,
+    });
   }
   if (method === "GET" && path === "/reports/attention") {
     needPermission(user!, "report:read");
@@ -950,12 +964,23 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (method === "GET" && path === "/reports/pipeline") {
     needPermission(user!, "report:read");
     const stages = ["lead","qualified","proposal_sent","negotiation","won","lost"].map((stage) => { const deals = state.deals.filter((d: AnyRecord) => d.stage === stage); return { stage, deals: deals.length, value_cents: sum(deals.map((d: AnyRecord) => d.value_amount || 0)) }; });
-    const won = state.deals.filter((d: AnyRecord) => d.stage === "won").length; const closed = state.deals.filter((d: AnyRecord) => ["won","lost"].includes(d.stage)).length;
-    return json({ stages, win_rate: closed ? won / closed : null, avg_days_to_win: 24 });
+    const wonDeals = state.deals.filter((deal: AnyRecord) => deal.stage === "won" && deal.closed_at);
+    const lost = state.deals.filter((deal: AnyRecord) => deal.stage === "lost").length;
+    const closed = wonDeals.length + lost;
+    const durations = wonDeals.map((deal: AnyRecord) => Math.max(0, (new Date(deal.closed_at).getTime() - new Date(deal.created_at).getTime()) / 86_400_000));
+    const averageDays = durations.length ? Math.round(sum(durations) / durations.length * 10) / 10 : 0;
+    return json({ stages, win_rate: closed ? wonDeals.length / closed : null, avg_days_to_win: averageDays });
   }
   if (method === "GET" && path === "/reports/utilization") {
     needPermission(user!, "report:read");
-    return json(state.users.filter((u: AnyRecord) => u.role !== "client").map((u: AnyRecord) => { const entries = state.timeEntries.filter((e: AnyRecord) => e.user_id === u.id); const minutes = sum(entries.map((e: AnyRecord) => e.minutes)); const billable_minutes = sum(entries.filter((e: AnyRecord) => e.billable).map((e: AnyRecord) => e.minutes)); return { user_id: u.id, full_name: u.full_name, minutes, billable_minutes, billable_pct: minutes ? billable_minutes / minutes * 100 : 0 }; }));
+    const from = addDays(-29);
+    const to = today();
+    return json(state.users.filter((user: AnyRecord) => user.is_active && user.role !== "client").map((user: AnyRecord) => {
+      const entries = state.timeEntries.filter((entry: AnyRecord) => entry.user_id === user.id && entry.entry_date >= from && entry.entry_date <= to);
+      const minutes = sum(entries.map((entry: AnyRecord) => entry.minutes));
+      const billableMinutes = sum(entries.filter((entry: AnyRecord) => entry.billable).map((entry: AnyRecord) => entry.minutes));
+      return { user_id: user.id, full_name: user.full_name, minutes, billable_minutes: billableMinutes, billable_pct: minutes ? Math.round(billableMinutes / minutes * 1000) / 10 : null };
+    }).sort((a: AnyRecord, b: AnyRecord) => b.minutes - a.minutes));
   }
   m = match(path, /^\/reports\/projects\/([^/]+)$/);
   if (m && method === "GET") {
