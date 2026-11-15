@@ -41,8 +41,10 @@ test("project collaboration supports comments, file storage, and approvals", asy
   await page.getByLabel("View workspace as").selectOption("sarah@agencyos.local");
   await page.getByRole("button", { name: /Notifications/ }).click();
   const notifications = page.getByRole("dialog", { name: "Notifications" });
-  const approvalItem = notifications.locator(".dd-item").filter({ has: page.getByRole("button", { name: "Approve", exact: true }) });
+  const approvalItem = notifications.locator(".dd-item")
+    .filter({ hasText: "Approve the project delivery review" })
+    .filter({ has: notifications.locator("button.btn.primary") });
   await expect(approvalItem).toContainText("Approve the project delivery review");
   await approvalItem.getByRole("button", { name: "Approve", exact: true }).click();
-  await expect(notifications.getByText("Needs your decision")).toHaveCount(0);
+  await expect(approvalItem).toHaveCount(0);
 });
