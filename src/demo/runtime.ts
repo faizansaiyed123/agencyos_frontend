@@ -50,10 +50,13 @@ async function totpCode(secret: string, at = Date.now()): Promise<string> {
   for (let index = 7; index >= 0; index--) {
     message[index] = Number((counter >> BigInt((7 - index) * 8)) & 255n);
   }
+  const secretBytes = new Uint8Array(base32Decode(secret));
+  const secretBuffer = secretBytes.buffer as ArrayBuffer;
+  const messageBuffer = message.buffer as ArrayBuffer;
   const key = await crypto.subtle.importKey(
-    "raw", base32Decode(secret), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
+    "raw", secretBuffer, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
   );
-  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, message));
+  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, messageBuffer));
   const offset = digest[digest.length - 1] & 0x0f;
   const binary = ((digest[offset] & 0x7f) << 24) |
     ((digest[offset + 1] & 0xff) << 16) |
