@@ -663,9 +663,15 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     const note = assertRow(state.creditNotes, m[2], "Credit note"); return pdfResponse(note.number, [note.reason, "Amount: " + note.amount_cents]);
   }
 
-  if (method === "GET" && path === "/comments") { needPermission(user!, "comment:write"); return json(state.comments.filter((r: AnyRecord) => r.entity_type === query.get("entity_type") && r.entity_id === query.get("entity_id"))); }
+  if (method === "GET" && path === "/comments") {
+    needPermission(user!, "comment:write");
+    required(query.get("entity_type"), "entity_type"); required(query.get("entity_id"), "entity_id");
+    authorizeEntity(state, user!, query.get("entity_type")!, query.get("entity_id")!);
+    return json(state.comments.filter((r: AnyRecord) => r.entity_type === query.get("entity_type") && r.entity_id === query.get("entity_id")));
+  }
   if (method === "POST" && path === "/comments") {
-    needPermission(user!, "comment:write"); required(body.body, "body");
+    needPermission(user!, "comment:write"); required(body.body, "body"); required(body.entity_type, "entity_type"); required(body.entity_id, "entity_id");
+    authorizeEntity(state, user!, body.entity_type, body.entity_id);
     const row = { id: uid(), entity_type: body.entity_type, entity_id: body.entity_id, author_id: user!.id, body: body.body, edited_at: null, created_at: now() };
     state.comments.push(row); notify(state, "comment.created", "New comment added", body.entity_type, body.entity_id); return json(row, 201);
   }
@@ -673,7 +679,10 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (m && method === "PATCH") { needPermission(user!, "comment:write"); const row = assertRow(state.comments, m[1], "Comment"); if (row.author_id !== user!.id && !hasPermission(user!, "user:manage")) throw new DemoFault(403, "forbidden", "You cannot edit this comment"); row.body = body.body; row.edited_at = now(); return recordResponse(row); }
   if (m && method === "DELETE") { needPermission(user!, "comment:write"); const row = assertRow(state.comments, m[1], "Comment"); if (row.author_id !== user!.id && !hasPermission(user!, "user:manage")) throw new DemoFault(403, "forbidden", "You cannot delete this comment"); state.comments = state.comments.filter((r: AnyRecord) => r.id !== row.id); return empty(); }
   if (method === "POST" && path === "/approvals") {
-    needPermission(user!, "approval:manage"); required(body.approver_id, "approver_id"); required(body.title, "title");
+    needPermission(user!, "approval:manage"); required(body.approver_id, "approver_id"); required(body.title, "title"); required(body.entity_type, "entity_type"); required(body.entity_id, "entity_id");
+    authorizeEntity(state, user!, body.entity_type, body.entity_id);
+    const approver = assertRow(state.users, body.approver_id, "Approver");
+    if (!approver.is_active || approver.role === "client") invalid("Choose an active staff approver", "invalid_approver");
     const row = { id: uid(), entity_type: body.entity_type, entity_id: body.entity_id, title: body.title, requested_by: user!.id, approver_id: body.approver_id, status: "pending", decision_note: null, created_at: now() };
     state.approvals.unshift(row); notify(state, "approval.requested", row.title, row.entity_type, row.entity_id, row.approver_id); return json(row, 201);
   }
@@ -846,7 +855,11 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   m = match(path, /^\/portal\/credit-notes\/([^/]+)\/pdf$/);
   if (m && method === "GET") { const note = assertRow(state.creditNotes, m[1], "Credit note"); const inv = assertRow(state.invoices, note.invoice_id, "Invoice"); if (inv.client_id !== user!.client_id) notFound("Credit note"); return pdfResponse(note.number, [note.reason, "Amount: " + note.amount_cents]); }
 
-  if (path === "/files" && method === "GET") { needPermission(user!, "file:read"); return json(state.files.filter((f: AnyRecord) => f.entity_type === query.get("entity_type") && f.entity_id === query.get("entity_id")).map(({ data, ...rest }: AnyRecord) => rest)); }
+  if (path === "/files" && method === "GET") {
+    needPermission(user!, "file:read"); required(query.get("entity_type"), "entity_type"); required(query.get("entity_id"), "entity_id");
+    authorizeEntity(state, user!, query.get("entity_type")!, query.get("entity_id")!);
+    return json(state.files.filter((f: AnyRecord) => f.entity_type === query.get("entity_type") && f.entity_id === query.get("entity_id")).map(({ data, ...rest }: AnyRecord) => rest));
+  }
   if (path === "/files" && method === "POST") {
     needPermission(user!, "file:write");
     const form = await request.clone().formData();
@@ -855,15 +868,46 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     const entityId = String(form.get("entity_id") || "");
     if (!fileEntry || typeof fileEntry === "string") invalid("A file is required", "file_required");
     required(entityId, "entity_id");
+    authorizeEntity(state, user!, entityType, entityId);
     const file = fileEntry as File;
+    if (!file.size) invalid("The file is empty", "empty_file");
+    if (file.size > 20 * 1024 * 1024) throw new DemoFault(413, "file_too_large", "Files may be at most 20 MB");
+    const filename = file.name.replace(/\\/g, "/").split("/").pop()!.replace(/[\\x00-\\x1f\\x7f]/g, "").trim().slice(0, 200) || "file";
+    const extension = filename.includes(".") ? filename.split(".").pop()!.toLowerCase() : "";
+    const allowed: Record<string, string[]> = {
+      pdf: ["application/pdf"], png: ["image/png"], jpg: ["image/jpeg"], jpeg: ["image/jpeg"],
+      gif: ["image/gif"], webp: ["image/webp"], txt: ["text/plain"], csv: ["text/csv", "text/plain", "application/vnd.ms-excel"],
+      docx: ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+      xlsx: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+      pptx: ["application/vnd.openxmlformats-officedocument.presentationml.presentation"], zip: ["application/zip", "application/x-zip-compressed"],
+    };
+    if (!allowed[extension]) invalid("This file type is not allowed", "file_type_not_allowed");
+    const declared = file.type || "application/octet-stream";
+    if (declared !== "application/octet-stream" && !allowed[extension].includes(declared)) invalid("Content type does not match the file extension", "content_type_mismatch");
     const data = new Uint8Array(await file.arrayBuffer());
-    const row = { id: uid(), entity_type: entityType, entity_id: entityId, filename: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size, uploaded_by: user!.id, created_at: now(), data };
-    state.files.push(row); return json((( { data: _data, ...rest }) => rest)(row), 201);
+    const signatures: Record<string, number[]> = {
+      pdf: [37,80,68,70,45], png: [137,80,78,71,13,10,26,10], jpg: [255,216,255], jpeg: [255,216,255],
+      gif: [71,73,70,56], docx: [80,75,3,4], xlsx: [80,75,3,4], pptx: [80,75,3,4], zip: [80,75,3,4],
+    };
+    if (signatures[extension] && !signatures[extension].every((byte, index) => data[index] === byte)) invalid("File contents do not match its extension", "content_mismatch");
+    if (extension === "webp" && (String.fromCharCode(...data.slice(0,4)) !== "RIFF" || String.fromCharCode(...data.slice(8,12)) !== "WEBP")) invalid("File contents do not match its extension", "content_mismatch");
+    const digest = await crypto.subtle.digest("SHA-256", data);
+    const sha256 = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const row = { id: uid(), entity_type: entityType, entity_id: entityId, filename, content_type: allowed[extension][0], size_bytes: file.size, sha256, uploaded_by: user!.id, created_at: now(), data };
+    state.files.push(row); const { data: _data, ...result } = row; return json(result, 201);
   }
   m = match(path, /^\/files\/([^/]+)\/download$/);
-  if (m && method === "GET") { needPermission(user!, "file:read"); const file = assertRow(state.files, m[1], "File"); if (user!.role === "client" && !hasPermission(user!, "file:read")) notFound("File"); return new Response(new Blob([file.data], { type: file.content_type }), { headers: { "Content-Type": file.content_type, "Content-Disposition": "attachment; filename=\"" + file.filename.replace(/"/g,"") + "\"" } }); }
+  if (m && method === "GET") {
+    needPermission(user!, "file:read"); const file = assertRow(state.files, m[1], "File");
+    authorizeEntity(state, user!, file.entity_type, file.entity_id);
+    return new Response(new Blob([file.data], { type: file.content_type }), { headers: { "Content-Type": file.content_type, "X-Content-Type-Options": "nosniff", "Content-Disposition": "attachment; filename=\"" + file.filename.replace(/"/g,"") + "\"" } });
+  }
   m = match(path, /^\/files\/([^/]+)$/);
-  if (m && method === "DELETE") { needPermission(user!, "file:write"); const file = assertRow(state.files, m[1], "File"); state.files = state.files.filter((r: AnyRecord) => r.id !== file.id); return empty(); }
+  if (m && method === "DELETE") {
+    needPermission(user!, "file:write"); const file = assertRow(state.files, m[1], "File");
+    if (file.uploaded_by !== user!.id && !hasPermission(user!, "user:manage")) throw new DemoFault(403, "forbidden", "You can only delete files you uploaded");
+    state.files = state.files.filter((r: AnyRecord) => r.id !== file.id); return empty();
+  }
 
   throw new DemoFault(404, "not_found", "No local API route matches " + method + " " + path);
 }
