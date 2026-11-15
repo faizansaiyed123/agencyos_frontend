@@ -91,6 +91,52 @@ async function verifyMfaCode(settings: AnyRecord, supplied: string): Promise<boo
   return Boolean(settings.secret && await verifyTotp(settings.secret, code));
 }
 
+const PASSWORD_ITERATIONS = 120_000;
+const toHex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+const fromHex = (value: string) => new Uint8Array((value.match(/.{2}/g) ?? []).map((part) => Number.parseInt(part, 16)));
+
+async function createLocalPasswordCredential(password: string): Promise<{ salt: string; hash: string }> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: PASSWORD_ITERATIONS, hash: "SHA-256" },
+    key,
+    256,
+  );
+  return { salt: toHex(salt), hash: toHex(new Uint8Array(bits)) };
+}
+
+async function verifyLocalPassword(state: AnyRecord, user: AnyRecord, supplied: string): Promise<boolean> {
+  const password = String(supplied || "");
+  state.credentials ??= {};
+  const saved = state.credentials[user.id];
+  if (!saved) {
+    // Preconfigured recruiter personas use this local-only password until changed.
+    if (password !== "workspace-access") return false;
+    state.credentials[user.id] = await createLocalPasswordCredential(password);
+    return true;
+  }
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: fromHex(saved.salt), iterations: PASSWORD_ITERATIONS, hash: "SHA-256" },
+    key,
+    256,
+  );
+  const actual = toHex(new Uint8Array(bits));
+  if (actual.length !== saved.hash.length) return false;
+  let difference = 0;
+  for (let index = 0; index < actual.length; index += 1) difference |= actual.charCodeAt(index) ^ saved.hash.charCodeAt(index);
+  return difference === 0;
+}
+
+function validateLocalPassword(password: unknown): string {
+  const value = String(password || "");
+  if (value.length < 10 || value.toLowerCase() === value || value.toUpperCase() === value || !/\d/.test(value)) {
+    invalid("Password must be at least 10 characters and include upper and lower case letters and a digit", "weak_password");
+  }
+  return value;
+}
+
 const now = () => new Date().toISOString();
 const today = () => now().slice(0, 10);
 const addDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
@@ -386,6 +432,33 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     method === "POST" && ["/auth/login", "/auth/signup", "/auth/refresh", "/auth/password/forgot", "/auth/password/reset", "/auth/mfa/verify", "/invites/accept"].includes(path),
   ].some(Boolean);
   const user = publicRoutes ? byId(state.users, state.activeUserId) : currentUser(state);
+  const requirePortalClient = (): AnyRecord => {
+    if (user?.role !== "client" || !user.client_id) {
+      throw new DemoFault(403, "forbidden", "Client portal access is only available to client accounts");
+    }
+    const client = state.clients.find((row: AnyRecord) => row.id === user.client_id && !row.archived_at);
+    if (!client) notFound("Client relationship");
+    return client;
+  };
+  const portalProposalOut = (proposal: AnyRecord): AnyRecord => {
+    const items = state.proposalItems.filter((item: AnyRecord) => item.proposal_id === proposal.id);
+    return {
+      id: proposal.id, title: proposal.title, status: proposal.status, currency: proposal.currency,
+      valid_until: proposal.valid_until, sent_at: proposal.sent_at, accepted_at: proposal.accepted_at,
+      rejected_at: proposal.rejected_at, rejection_reason: proposal.rejection_reason,
+      total_amount: sum(items.map((item: AnyRecord) => amount(item.quantity, item.unit_amount))),
+    };
+  };
+  const portalInvoiceOut = (invoice: AnyRecord): AnyRecord => {
+    refreshBalances(state, invoice);
+    return {
+      id: invoice.id, number: invoice.number, status: invoice.status, currency: invoice.currency,
+      issue_date: invoice.issue_date, due_date: invoice.due_date, total_cents: invoice.total_cents,
+      amount_paid_cents: invoice.amount_paid_cents, amount_refunded_cents: invoice.amount_refunded_cents,
+      credit_note_cents: invoice.credit_note_cents, balance_cents: invoice.balance_cents,
+      credit_balance_cents: invoice.credit_balance_cents, notes: invoice.notes,
+    };
+  };
 
   if (method === "POST" && path === "/auth/refresh") {
     if (!user) throw new DemoFault(401, "missing_refresh_token", "No interactive workspace session is available");
@@ -393,8 +466,11 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   }
   if (method === "POST" && path === "/auth/login") {
     const email = String(body.email || "").toLowerCase();
+    required(body.password, "password");
     const found = state.users.find((u: AnyRecord) => u.email.toLowerCase() === email && u.is_active);
-    if (!found) throw new DemoFault(401, "invalid_credentials", "No workspace account matches that email address");
+    if (!found || !await verifyLocalPassword(state, found, String(body.password))) {
+      throw new DemoFault(401, "invalid_credentials", "Email or password is incorrect");
+    }
     if (found.mfa_enabled) {
       state.mfaPending ??= {};
       const pendingToken = uid();
@@ -408,6 +484,8 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (method === "POST" && path === "/auth/signup") {
     required(body.organization_name, "organization_name"); required(body.full_name, "full_name"); required(body.email, "email");
     const created = { id: uid(), org_id: uid(), email: String(body.email).toLowerCase(), full_name: body.full_name, role: "owner", client_id: null, is_active: true, mfa_enabled: false, last_login_at: now(), created_at: now() };
+    state.credentials ??= {};
+    state.credentials[created.id] = await createLocalPasswordCredential(validateLocalPassword(body.password));
     state.users = [created];
     state.activeUserId = created.id;
     state.org = { id: created.org_id, name: body.organization_name, currency: "USD" };
@@ -417,15 +495,16 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     state.mfaPending = {};
     return json({ access_token: "agencyos-local-session", expires_in: 900 }, 201);
   }
-  if (method === "POST" && path === "/auth/password/forgot") return json({ detail: "If the account exists, password recovery instructions have been prepared." }, 202);
+  if (method === "POST" && path === "/auth/password/forgot") {
+    required(body.email, "email");
+    return json({ message: "If the account exists, a password reset link has been prepared for local delivery." }, 202);
+  }
   if (method === "POST" && path === "/auth/password/reset") return empty();
   if (method === "POST" && path === "/invites/accept") {
     required(body.token, "token");
     required(body.full_name, "full_name");
     required(body.password, "password");
-    if (String(body.password).length < 10 || !/[A-Z]/.test(body.password) || !/[a-z]/.test(body.password) || !/\d/.test(body.password)) {
-      invalid("Password must be at least 10 characters and include upper and lower case letters and a digit", "weak_password");
-    }
+    const acceptedPassword = validateLocalPassword(body.password);
     const invite = state.invites.find((candidate: AnyRecord) => candidate.token === body.token);
     if (!invite) notFound("Invite");
     if (invite.accepted_at || invite.revoked_at) conflict("This invite is no longer valid", "invite_invalid");
@@ -439,6 +518,8 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
       last_login_at: now(), created_at: now(),
     };
     invite.accepted_at = now();
+    state.credentials ??= {};
+    state.credentials[created.id] = await createLocalPasswordCredential(acceptedPassword);
     state.users.unshift(created);
     state.activeUserId = created.id;
     audit(state, created, "invite.accepted", "user", created.id, { invite_id: invite.id });
@@ -489,7 +570,11 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   }
   if (method === "POST" && path === "/auth/mfa/disable") {
     const settings = state.mfa[user!.id] ?? {};
-    if (!settings.enabled || !await verifyMfaCode(settings, String(body.code || ""))) {
+    if (!settings.enabled) conflict("MFA is not enabled", "mfa_not_enabled");
+    if (!await verifyLocalPassword(state, user!, String(body.password || ""))) {
+      throw new DemoFault(401, "invalid_credentials", "Incorrect password");
+    }
+    if (!await verifyMfaCode(settings, String(body.code || ""))) {
       throw new DemoFault(401, "invalid_mfa_code", "The authenticator or recovery code is invalid");
     }
     user!.mfa_enabled = false;
@@ -1175,31 +1260,112 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     });
   }
 
-    if (method === "GET" && path === "/portal/overview") {
-    if (user!.role !== "client" || !user!.client_id) throw new DemoFault(403, "forbidden", "Client account required");
-    const client = assertRow(state.clients, user!.client_id, "Client");
-    const projects = state.projects.filter((p: AnyRecord) => p.client_id === client.id);
-    const proposals = state.proposals.filter((p: AnyRecord) => p.client_id === client.id).map((p: AnyRecord) => ({ ...p, total_amount: sum(state.proposalItems.filter((i: AnyRecord) => i.proposal_id === p.id).map((i: AnyRecord) => amount(i.quantity, i.unit_amount))) }));
-    const invoices = state.invoices.filter((i: AnyRecord) => i.client_id === client.id).map((i: AnyRecord) => { refreshBalances(state, i); return i; });
-    return json({ client, projects, proposals, invoices });
+  if (method === "GET" && path === "/portal/overview") {
+    const client = requirePortalClient();
+    const projects = state.projects
+      .filter((project: AnyRecord) => project.client_id === client.id)
+      .sort((a: AnyRecord, b: AnyRecord) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))
+      .slice(0, 20);
+    const proposals = state.proposals
+      .filter((proposal: AnyRecord) => proposal.client_id === client.id && ["sent", "accepted", "rejected", "expired"].includes(proposal.status))
+      .sort((a: AnyRecord, b: AnyRecord) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+      .slice(0, 20)
+      .map(portalProposalOut);
+    const invoices = state.invoices
+      .filter((invoice: AnyRecord) => invoice.client_id === client.id && invoice.status !== "draft")
+      .sort((a: AnyRecord, b: AnyRecord) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+      .slice(0, 20)
+      .map(portalInvoiceOut);
+    return json({
+      client: { id: client.id, name: client.name, industry: client.industry, website: client.website },
+      projects,
+      proposals,
+      invoices,
+    });
   }
-  if (method === "GET" && path === "/portal/projects") return json(state.projects.filter((p: AnyRecord) => p.client_id === user!.client_id));
-  if (method === "GET" && path === "/portal/proposals") return json(state.proposals.filter((p: AnyRecord) => p.client_id === user!.client_id));
+  if (method === "GET" && path === "/portal/projects") {
+    const client = requirePortalClient();
+    return json(state.projects.filter((project: AnyRecord) => project.client_id === client.id)
+      .sort((a: AnyRecord, b: AnyRecord) => String(b.updated_at || "").localeCompare(String(a.updated_at || ""))));
+  }
+  if (method === "GET" && path === "/portal/proposals") {
+    const client = requirePortalClient();
+    return json(state.proposals
+      .filter((proposal: AnyRecord) => proposal.client_id === client.id && ["sent", "accepted", "rejected", "expired"].includes(proposal.status))
+      .sort((a: AnyRecord, b: AnyRecord) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+      .map(portalProposalOut));
+  }
   m = match(path, /^\/portal\/proposals\/([^/]+)$/);
-  if (m && method === "GET") { const p = assertRow(state.proposals, m[1], "Proposal"); if (p.client_id !== user!.client_id) notFound("Proposal"); const items = state.proposalItems.filter((i: AnyRecord) => i.proposal_id === p.id); return json({ proposal: { ...p, total_amount: sum(items.map((i: AnyRecord) => amount(i.quantity, i.unit_amount))) }, items: items.map((i: AnyRecord) => ({ ...i, amount: amount(i.quantity, i.unit_amount) })) }); }
+  if (m && method === "GET") {
+    const client = requirePortalClient();
+    const proposal = state.proposals.find((row: AnyRecord) => row.id === m![1] && row.client_id === client.id && row.status !== "draft");
+    if (!proposal) notFound("Proposal");
+    const items = state.proposalItems
+      .filter((item: AnyRecord) => item.proposal_id === proposal.id)
+      .sort((a: AnyRecord, b: AnyRecord) => a.position - b.position);
+    return json({
+      proposal: portalProposalOut(proposal),
+      items: items.map((item: AnyRecord) => ({
+        id: item.id, description: item.description, quantity: String(item.quantity),
+        unit_amount: item.unit_amount, amount: amount(item.quantity, item.unit_amount), position: item.position,
+      })),
+    });
+  }
   m = match(path, /^\/portal\/proposals\/([^/]+)\/(accept|reject)$/);
   if (m && method === "POST") {
-    const p = assertRow(state.proposals, m[1], "Proposal"); if (p.client_id !== user!.client_id) notFound("Proposal");
-    if (m[2] === "accept") acceptProposal(state, p, user!);
-    else { if (p.status !== "sent") conflict("This proposal cannot be rejected"); required(body.reason, "reason"); p.status = "rejected"; p.rejected_at = now(); p.rejection_reason = body.reason; }
-    const items = state.proposalItems.filter((i: AnyRecord) => i.proposal_id === p.id); return json({ proposal: { ...p, total_amount: sum(items.map((i: AnyRecord) => amount(i.quantity, i.unit_amount))) }, items });
+    const client = requirePortalClient();
+    const proposal = state.proposals.find((row: AnyRecord) => row.id === m![1] && row.client_id === client.id);
+    if (!proposal) notFound("Proposal");
+    if (m[2] === "accept") acceptProposal(state, proposal, user!);
+    else {
+      if (proposal.status !== "sent") conflict("This proposal cannot be rejected");
+      required(body.reason, "reason");
+      proposal.status = "rejected";
+      proposal.rejected_at = now();
+      proposal.rejection_reason = body.reason;
+    }
+    const items = state.proposalItems
+      .filter((item: AnyRecord) => item.proposal_id === proposal.id)
+      .sort((a: AnyRecord, b: AnyRecord) => a.position - b.position);
+    return json({
+      proposal: portalProposalOut(proposal),
+      items: items.map((item: AnyRecord) => ({
+        id: item.id, description: item.description, quantity: String(item.quantity),
+        unit_amount: item.unit_amount, amount: amount(item.quantity, item.unit_amount), position: item.position,
+      })),
+    });
   }
-  if (method === "GET" && path === "/portal/invoices") return json(state.invoices.filter((i: AnyRecord) => i.client_id === user!.client_id).map((i: AnyRecord) => { refreshBalances(state, i); return i; }));
+  if (method === "GET" && path === "/portal/invoices") {
+    const client = requirePortalClient();
+    return json(state.invoices
+      .filter((invoice: AnyRecord) => invoice.client_id === client.id && invoice.status !== "draft")
+      .sort((a: AnyRecord, b: AnyRecord) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+      .map(portalInvoiceOut));
+  }
   m = match(path, /^\/portal\/invoices\/([^/]+)\/pdf$/);
-  if (m && method === "GET") { const inv = assertRow(state.invoices, m[1], "Invoice"); if (inv.client_id !== user!.client_id || inv.status === "draft") notFound("Invoice"); return pdfResponse(inv.number || "Invoice", ["Client portal copy", "Total: " + inv.total_cents]); }
-  if (method === "GET" && path === "/portal/credit-notes") return json(state.creditNotes.filter((n: AnyRecord) => state.invoices.some((i: AnyRecord) => i.id === n.invoice_id && i.client_id === user!.client_id)));
+  if (m && method === "GET") {
+    const client = requirePortalClient();
+    const invoice = state.invoices.find((row: AnyRecord) => row.id === m![1] && row.client_id === client.id && row.status !== "draft");
+    if (!invoice) notFound("Invoice");
+    return pdfResponse(invoice.number || "Invoice", ["Client portal copy", "Total: " + invoice.total_cents,
+      ...state.invoiceLines.filter((line: AnyRecord) => line.invoice_id === invoice.id).map((line: AnyRecord) => line.description)]);
+  }
+  if (method === "GET" && path === "/portal/credit-notes") {
+    const client = requirePortalClient();
+    return json(state.creditNotes
+      .filter((note: AnyRecord) => state.invoices.some((invoice: AnyRecord) =>
+        invoice.id === note.invoice_id && invoice.client_id === client.id && invoice.status !== "draft"))
+      .sort((a: AnyRecord, b: AnyRecord) => String(b.issued_on || "").localeCompare(String(a.issued_on || ""))));
+  }
   m = match(path, /^\/portal\/credit-notes\/([^/]+)\/pdf$/);
-  if (m && method === "GET") { const note = assertRow(state.creditNotes, m[1], "Credit note"); const inv = assertRow(state.invoices, note.invoice_id, "Invoice"); if (inv.client_id !== user!.client_id) notFound("Credit note"); return pdfResponse(note.number, [note.reason, "Amount: " + note.amount_cents]); }
+  if (m && method === "GET") {
+    const client = requirePortalClient();
+    const note = state.creditNotes.find((row: AnyRecord) => row.id === m![1]);
+    if (!note) notFound("Credit note");
+    const invoice = state.invoices.find((row: AnyRecord) => row.id === note.invoice_id && row.client_id === client.id && row.status !== "draft");
+    if (!invoice) notFound("Credit note");
+    return pdfResponse(note.number, [note.reason, "Amount: " + note.amount_cents]);
+  }
 
   if (path === "/files" && method === "GET") {
     needPermission(user!, "file:read"); required(query.get("entity_type"), "entity_type"); required(query.get("entity_id"), "entity_id");
