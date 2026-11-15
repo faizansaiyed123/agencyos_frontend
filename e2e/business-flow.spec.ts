@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 test("client → deal → proposal acceptance creates a project and milestones", async ({ page }) => {
+  page.on("console", (message) => console.log("BROWSER CONSOLE", message.type(), message.text()));
+  page.on("requestfailed", (request) => console.log("BROWSER REQUEST FAILED", request.method(), request.url(), request.failure()?.errorText));
+  page.on("response", (response) => { if (response.url().includes("/api/v1/proposals")) console.log("PROPOSAL API RESPONSE", response.status(), response.url()); });
   const clientName = "Recruiter Workflow Studio";
   const dealName = "End-to-End Product Delivery";
   const proposalName = "Product Delivery Scope";
