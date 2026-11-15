@@ -27,7 +27,7 @@ function base32Encode(input: Uint8Array): string {
   return output;
 }
 function base32Decode(input: string): Uint8Array {
-  const clean = input.toUpperCase().replace(/=+$/g, "").replace(/\\s/g, "");
+  const clean = input.toUpperCase().replace(/=+$/g, "").replace(/\s/g, "");
   let buffer = 0;
   let bits = 0;
   const output: number[] = [];
@@ -62,7 +62,7 @@ async function totpCode(secret: string, at = Date.now()): Promise<string> {
   return String(binary % 1_000_000).padStart(6, "0");
 }
 async function verifyTotp(secret: string, supplied: string): Promise<boolean> {
-  if (!/^\\d{6}$/.test(supplied)) return false;
+  if (!/^\d{6}$/.test(supplied)) return false;
   const time = Date.now();
   for (const offset of [-30_000, 0, 30_000]) {
     if (await totpCode(secret, time + offset) === supplied) return true;
@@ -359,6 +359,8 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     state.org = { id: created.org_id, name: body.organization_name, currency: "USD" };
     for (const key of ["clients","contacts","deals","dealHistory","proposals","proposalItems","projects","members","milestones","tasks","timeEntries","invoices","invoiceLines","payments","refunds","creditNotes","comments","approvals","notifications","files","invites","webhooks","deliveries","audit"]) state[key] = [];
     state.idempotency = {};
+    state.mfa = {};
+    state.mfaPending = {};
     return json({ access_token: "agencyos-local-session", expires_in: 900 }, 201);
   }
   if (method === "POST" && path === "/auth/password/forgot") return json({ detail: "If the account exists, password recovery instructions have been prepared." }, 202);
