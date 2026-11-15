@@ -207,7 +207,7 @@ function CreditNoteForm({ inv, onClose }: { inv: Invoice; onClose: () => void })
   const [key] = useState(() => crypto.randomUUID());
   const create = useAction(
     () =>
-      api(\`/invoices/\${inv.id}/credit-notes\`, {
+      api(`/invoices/${inv.id}/credit-notes`, {
         body: { amount_cents: toCents(f.amount), reason: f.reason.trim() },
         headers: { "Idempotency-Key": key },
       }),
@@ -269,7 +269,7 @@ function RefundForm({
   const [key] = useState(() => crypto.randomUUID());
   const refund = useAction(
     () =>
-      api(\`/invoices/\${inv.id}/payments/\${payment.id}/refunds\`, {
+      api(`/invoices/${inv.id}/payments/${payment.id}/refunds`, {
         body: {
           amount_cents: toCents(f.amount),
           refunded_on: f.refunded_on,
