@@ -5,7 +5,7 @@ test("each workspace persona receives its own navigation and access scope", asyn
   const persona = page.getByLabel("View workspace as");
 
   await persona.selectOption("jamie@agencyos.local");
-  await expect(page.getByText("Team member", { exact: true })).toBeVisible();
+  await expect(page.locator(".me")).toContainText("Team member");
   await expect(page.getByRole("link", { name: "Projects", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "My work", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Invoices", exact: true })).toHaveCount(0);
@@ -15,7 +15,7 @@ test("each workspace persona receives its own navigation and access scope", asyn
   await expect(page.getByRole("link", { name: "Payment Platform Modernization", exact: true })).toBeVisible();
 
   await persona.selectOption("taylor@agencyos.local");
-  await expect(page.getByText("Finance", { exact: true })).toBeVisible();
+  await expect(page.locator(".me")).toContainText("Finance");
   await expect(page.getByRole("link", { name: "Invoices", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Pipeline", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Settings", exact: true })).toBeVisible();
