@@ -31,7 +31,6 @@ const byId = (rows: AnyRecord[], id: string) => rows.find((row) => row.id === id
 const assertRow = (rows: AnyRecord[], id: string, label: string) => byId(rows, id) ?? notFound(label);
 const amount = (qty: unknown, unit: unknown) => Math.round(Number(qty) * Number(unit));
 const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
-const iso = (daysAgo = 0) => new Date(Date.now() - daysAgo * 86_400_000).toISOString();
 
 const permissionMap: Record<string, string[]> = {
   owner: ["*"],
@@ -714,8 +713,13 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
 
   if (path === "/files" && method === "GET") return json(state.files.filter((f: AnyRecord) => f.entity_type === query.get("entity_type") && f.entity_id === query.get("entity_id")).map(({ data, ...rest }: AnyRecord) => rest));
   if (path === "/files" && method === "POST") {
-    const form = await request.clone().formData(); const file = form.get("file"); const entityType = String(form.get("entity_type") || "project"); const entityId = String(form.get("entity_id") || "");
-    if (!(file instanceof File)) invalid("A file is required", "file_required"); required(entityId, "entity_id");
+    const form = await request.clone().formData();
+    const fileEntry = form.get("file");
+    const entityType = String(form.get("entity_type") || "project");
+    const entityId = String(form.get("entity_id") || "");
+    if (!fileEntry || typeof fileEntry === "string") invalid("A file is required", "file_required");
+    required(entityId, "entity_id");
+    const file = fileEntry as File;
     const data = new Uint8Array(await file.arrayBuffer());
     const row = { id: uid(), entity_type: entityType, entity_id: entityId, filename: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size, uploaded_by: user!.id, created_at: now(), data };
     state.files.push(row); return json((( { data: _data, ...rest }) => rest)(row), 201);
