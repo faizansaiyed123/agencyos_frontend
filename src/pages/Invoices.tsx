@@ -579,7 +579,8 @@ export function InvoiceDetail() {
       (m) => m.amount_cents && !lines.some((l) => l.milestone_id === m.id),
     ) ?? [];
   const creditableCents = inv.total_cents - inv.credit_note_cents;
-  const canIssueCredit = manage && !["draft", "void", "credited"].includes(inv.status) && creditableCents > 0;
+  const canIssueCredit =
+    manage && !["draft", "void", "credited"].includes(inv.status) && creditableCents > 0;
   const downloadCreditNote = async (note: CreditNote) => {
     const blob = await apiBlob(`/credit-notes/${note.id}/pdf`);
     const url = URL.createObjectURL(blob);
