@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { api, apiBlob } from "../api/client";
-import { useAction, usePortalOverview, usePortalProposal } from "../api/hooks";
+import {
+  useAction,
+  usePortalCreditNotes,
+  usePortalOverview,
+  usePortalProposal,
+} from "../api/hooks";
 import { Empty, ErrorNote, PageHead, Spinner, StatusBadge } from "../components/ui";
 import { fmtDate, label, money } from "../lib";
 import type { ProposalStatus } from "../api/types";
@@ -36,6 +41,7 @@ function ProposalCard({
 
 export default function Portal() {
   const q = usePortalOverview();
+  const creditNotesQ = usePortalCreditNotes();
   const [selected, setSelected] = useState<string | null>(null);
   const detail = usePortalProposal(selected);
   const decide = useAction(
@@ -62,6 +68,15 @@ export default function Portal() {
     const a = document.createElement("a");
     a.href = url;
     a.download = `${number ?? "invoice"}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const downloadCreditNote = async (id: string, number: string) => {
+    const blob = await apiBlob(`/portal/credit-notes/${id}/pdf`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${number}.pdf`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -164,14 +179,25 @@ export default function Portal() {
                       <div className="muted">
                         {i.due_date ? `Due ${fmtDate(i.due_date)}` : "No due date"}
                       </div>
+                      <div className="muted">
+                        Paid {money(i.amount_paid_cents, i.currency)} · Refunded{" "}
+                        {money(i.amount_refunded_cents, i.currency)} · Credits{" "}
+                        {money(i.credit_note_cents, i.currency)}
+                      </div>
                     </div>
                     <div className="right-stack">
                       <span
-                        className={`badge ${i.status === "paid" ? "moss" : i.balance_cents > 0 ? "sun" : ""}`}
+                        className={`badge ${i.status === "paid" || i.status === "credited" ? "moss" : i.balance_cents > 0 ? "sun" : ""}`}
                       >
                         {label(i.status)}
                       </span>
-                      <strong>{money(i.balance_cents, i.currency)}</strong>
+                      <strong>
+                        {i.balance_cents > 0
+                          ? money(i.balance_cents, i.currency)
+                          : i.credit_balance_cents > 0
+                            ? `Client credit ${money(i.credit_balance_cents, i.currency)}`
+                            : money(0, i.currency)}
+                      </strong>
                       <button
                         className="btn sm ghost"
                         onClick={() => downloadInvoice(i.id, i.number)}
@@ -181,6 +207,49 @@ export default function Portal() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="panel">
+          <header>
+            <h3>Credit notes</h3>
+            <span className="muted">{creditNotesQ.data?.length ?? 0}</span>
+          </header>
+          <div className="body">
+            {creditNotesQ.isLoading ? (
+              <Spinner />
+            ) : creditNotesQ.error ? (
+              <ErrorNote error={creditNotesQ.error} />
+            ) : !creditNotesQ.data?.length ? (
+              <Empty title="No credit notes">Issued credit notes for your account will appear here.</Empty>
+            ) : (
+              <div className="portal-list">
+                {creditNotesQ.data.map((note) => {
+                  const invoiceNumber = invoices.find((invoice) => invoice.id === note.invoice_id)?.number;
+                  return (
+                    <div className="portal-row" key={note.id}>
+                      <div>
+                        <strong>{note.number}</strong>
+                        <div className="muted">
+                          {invoiceNumber ? `Invoice ${invoiceNumber}` : "Invoice"} ·{" "}
+                          {fmtDate(note.issued_on)}
+                        </div>
+                        <div className="muted">{note.reason}</div>
+                      </div>
+                      <div className="right-stack">
+                        <strong>{money(note.amount_cents, "USD")}</strong>
+                        <button
+                          className="btn sm ghost"
+                          onClick={() => downloadCreditNote(note.id, note.number)}
+                        >
+                          PDF
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
