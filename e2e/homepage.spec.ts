@@ -7,5 +7,5 @@ test("a first-time visitor lands in the interactive AgencyOS workspace", async (
   await expect(page.getByRole("link", { name: "Clients", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Pipeline", exact: true })).toBeVisible();
   await expect(page.getByLabel("View workspace as")).toHaveValue("owner@agencyos.local");
-  await expect(page.getByText("Digital Experience Rebuild")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Digital Experience Rebuild", exact: true })).toBeVisible();
 });
