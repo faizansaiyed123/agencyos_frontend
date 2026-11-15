@@ -806,14 +806,8 @@ export async function demoFetch(input: RequestInfo | URL, init?: RequestInit): P
       if (contentType.includes("application/json")) body = await request.clone().json();
       else if (contentType.includes("application/x-www-form-urlencoded")) body = Object.fromEntries(new URLSearchParams(await request.clone().text()));
     }
-    const method = request.method.toUpperCase();
-    const traceProposalCreate = method === "POST" && path === "/proposals";
-    if (traceProposalCreate) console.info("[workspace] proposal create entered", body);
-    const response = await withDemoState((state) => execute({ request, path, method, query: url.searchParams, body }, state));
-    if (traceProposalCreate) console.info("[workspace] proposal create returned", response.status);
-    return response;
+    return await withDemoState((state) => execute({ request, path, method: request.method.toUpperCase(), query: url.searchParams, body }, state));
   } catch (error) {
-    console.error("[workspace] request failed", request.method, path, error);
     return faultResponse(error);
   }
 }
