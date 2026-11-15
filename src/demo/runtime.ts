@@ -199,7 +199,11 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (method === "POST" && path === "/auth/signup") {
     required(body.organization_name, "organization_name"); required(body.full_name, "full_name"); required(body.email, "email");
     const created = { id: uid(), org_id: uid(), email: String(body.email).toLowerCase(), full_name: body.full_name, role: "owner", client_id: null, is_active: true, mfa_enabled: false, last_login_at: now(), created_at: now() };
-    state.users.unshift(created); state.activeUserId = created.id; state.org = { id: created.org_id, name: body.organization_name, currency: "USD" };
+    state.users = [created];
+    state.activeUserId = created.id;
+    state.org = { id: created.org_id, name: body.organization_name, currency: "USD" };
+    for (const key of ["clients","contacts","deals","dealHistory","proposals","proposalItems","projects","members","milestones","tasks","timeEntries","invoices","invoiceLines","payments","refunds","creditNotes","comments","approvals","notifications","files","invites","webhooks","deliveries","audit"]) state[key] = [];
+    state.idempotency = {};
     return json({ access_token: "agencyos-local-session", expires_in: 900 }, 201);
   }
   if (method === "POST" && path === "/auth/password/forgot") return json({ detail: "If the account exists, password recovery instructions have been prepared." }, 202);
@@ -715,7 +719,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     return json({ mode: "keyword", answer: sources.length ? "Closest matches:\n" + sources.slice(0,5).map((source) => "- " + source.type + ": " + source.title).join("\n") : "I couldn't find anything matching that.", sources: sources.slice(0,5) });
   }
 
-  if (method === "GET" && path === "/flags/me") return json(Object.fromEntries(state.flags.map((f: AnyRecord) => [f.key, f.enabled && f.rollout_percent >= 100])));
+  if (method === "GET" && path === "/flags/me") return json(Object.fromEntries(state.flags.map((f: AnyRecord) => [f.key, f.enabled && f.rollout_percent >= 100 && (f.key !== "assistant" || hasPermission(user!, "client:read"))])));
   if (method === "GET" && path === "/flags") { needPermission(user!, "flag:manage"); return json(state.flags.map((f: AnyRecord) => ({ ...f, effective_for_me: f.enabled && f.rollout_percent >= 100 }))); }
   m = match(path, /^\/flags\/([^/]+)$/);
   if (m && method === "PUT") {
