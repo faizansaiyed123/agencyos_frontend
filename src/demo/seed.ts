@@ -16,8 +16,10 @@ const dealWon = "00000000-0000-4000-8000-000000000201";
 const dealNegotiation = "00000000-0000-4000-8000-000000000202";
 const dealQualified = "00000000-0000-4000-8000-000000000203";
 const dealLead = "00000000-0000-4000-8000-000000000204";
+const dealClientSent = "00000000-0000-4000-8000-000000000205";
 const proposalAccepted = "00000000-0000-4000-8000-000000000301";
 const proposalDraft = "00000000-0000-4000-8000-000000000302";
+const proposalSent = "00000000-0000-4000-8000-000000000303";
 const project = "00000000-0000-4000-8000-000000000401";
 const milestoneOne = "00000000-0000-4000-8000-000000000411";
 const milestoneTwo = "00000000-0000-4000-8000-000000000412";
@@ -57,6 +59,7 @@ export function createSeedState(): Record<string, any> {
       { id: dealNegotiation, client_id: starlight, title: "Digital Experience Rebuild", description: "Rebuild the customer-facing digital experience.", stage: "negotiation", value_amount: 4600000, value_currency: "USD", owner_user_id: accountManager, expected_close_date: date(-3), closed_at: null, lost_reason: null, created_at: iso(48), updated_at: iso(2) },
       { id: dealQualified, client_id: health, title: "Clinical Operations Portal", description: "A secure operational portal for care teams.", stage: "qualified", value_amount: 3200000, value_currency: "USD", owner_user_id: owner, expected_close_date: date(-20), closed_at: null, lost_reason: null, created_at: iso(30), updated_at: iso(4) },
       { id: dealLead, client_id: starlight, title: "Content Workflow Automation", description: "Discovery for a content workflow product.", stage: "lead", value_amount: 1800000, value_currency: "USD", owner_user_id: accountManager, expected_close_date: date(-10), closed_at: null, lost_reason: null, created_at: iso(14), updated_at: iso(1) },
+      { id: dealClientSent, client_id: acme, title: "Client Portal Workflow Upgrade", description: "A client-facing workflow upgrade ready for acceptance.", stage: "proposal_sent", value_amount: 2400000, value_currency: "USD", owner_user_id: accountManager, expected_close_date: date(-12), closed_at: null, lost_reason: null, created_at: iso(24), updated_at: iso(2) },
     ],
     dealHistory: [
       { id: "00000000-0000-4000-8000-000000000211", deal_id: dealWon, from_stage: "lead", to_stage: "qualified", changed_by: accountManager, note: "Discovery completed", created_at: iso(95) },
@@ -67,6 +70,7 @@ export function createSeedState(): Record<string, any> {
     proposals: [
       { id: proposalAccepted, client_id: acme, deal_id: dealWon, title: "Payment Platform Delivery Proposal", status: "accepted", currency: "USD", valid_until: date(-20), sent_at: iso(30), accepted_at: iso(12), rejected_at: null, rejection_reason: null, created_at: iso(40), updated_at: iso(12) },
       { id: proposalDraft, client_id: starlight, deal_id: dealNegotiation, title: "Digital Experience Proposal", status: "draft", currency: "USD", valid_until: date(-18), sent_at: null, accepted_at: null, rejected_at: null, rejection_reason: null, created_at: iso(3), updated_at: iso(1) },
+      { id: proposalSent, client_id: acme, deal_id: dealClientSent, title: "Client Portal Workflow Upgrade Proposal", status: "sent", currency: "USD", valid_until: date(-9), sent_at: iso(2), accepted_at: null, rejected_at: null, rejection_reason: null, created_at: iso(5), updated_at: iso(2) },
     ],
     proposalItems: [
       { id: "00000000-0000-4000-8000-000000000311", proposal_id: proposalAccepted, description: "Discovery and solution architecture", quantity: "1.00", unit_amount: 1500000, position: 0 },
@@ -74,6 +78,8 @@ export function createSeedState(): Record<string, any> {
       { id: "00000000-0000-4000-8000-000000000313", proposal_id: proposalAccepted, description: "Quality assurance and launch", quantity: "1.00", unit_amount: 3000000, position: 2 },
       { id: "00000000-0000-4000-8000-000000000314", proposal_id: proposalDraft, description: "Experience research and UX", quantity: "1.00", unit_amount: 900000, position: 0 },
       { id: "00000000-0000-4000-8000-000000000315", proposal_id: proposalDraft, description: "Frontend product engineering", quantity: "1.00", unit_amount: 3700000, position: 1 },
+      { id: "00000000-0000-4000-8000-000000000316", proposal_id: proposalSent, description: "Client portal workflow design", quantity: "1.00", unit_amount: 800000, position: 0 },
+      { id: "00000000-0000-4000-8000-000000000317", proposal_id: proposalSent, description: "Workflow implementation and launch", quantity: "1.00", unit_amount: 1600000, position: 1 },
     ],
     projects: [
       { id: project, client_id: acme, deal_id: dealWon, proposal_id: proposalAccepted, name: "Payment Platform Modernization", description: "Delivery workspace for the accepted proposal.", status: "active", budget_amount: 11000000, currency: "USD", start_date: date(10), due_date: date(-35), manager_user_id: projectManager, created_at: iso(12), updated_at: iso(1) },
