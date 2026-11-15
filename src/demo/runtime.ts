@@ -9,6 +9,85 @@ class DemoFault extends Error {
   }
 }
 const uid = () => crypto.randomUUID();
+const TOTP_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+function base32Encode(input: Uint8Array): string {
+  let buffer = 0;
+  let bits = 0;
+  let output = "";
+  for (const byte of input) {
+    buffer = (buffer << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      output += TOTP_ALPHABET[(buffer >> bits) & 31];
+    }
+    buffer &= (1 << bits) - 1;
+  }
+  if (bits > 0) output += TOTP_ALPHABET[(buffer << (5 - bits)) & 31];
+  return output;
+}
+function base32Decode(input: string): Uint8Array {
+  const clean = input.toUpperCase().replace(/=+$/g, "").replace(/\\s/g, "");
+  let buffer = 0;
+  let bits = 0;
+  const output: number[] = [];
+  for (const char of clean) {
+    const value = TOTP_ALPHABET.indexOf(char);
+    if (value < 0) throw new DemoFault(422, "invalid_mfa_secret", "The authenticator secret is invalid");
+    buffer = (buffer << 5) | value;
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      output.push((buffer >> bits) & 255);
+      buffer &= (1 << bits) - 1;
+    }
+  }
+  return new Uint8Array(output);
+}
+async function totpCode(secret: string, at = Date.now()): Promise<string> {
+  const counter = BigInt(Math.floor(at / 30_000));
+  const message = new Uint8Array(8);
+  for (let index = 7; index >= 0; index--) {
+    message[index] = Number((counter >> BigInt((7 - index) * 8)) & 255n);
+  }
+  const key = await crypto.subtle.importKey(
+    "raw", base32Decode(secret), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]
+  );
+  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, message));
+  const offset = digest[digest.length - 1] & 0x0f;
+  const binary = ((digest[offset] & 0x7f) << 24) |
+    ((digest[offset + 1] & 0xff) << 16) |
+    ((digest[offset + 2] & 0xff) << 8) |
+    (digest[offset + 3] & 0xff);
+  return String(binary % 1_000_000).padStart(6, "0");
+}
+async function verifyTotp(secret: string, supplied: string): Promise<boolean> {
+  if (!/^\\d{6}$/.test(supplied)) return false;
+  const time = Date.now();
+  for (const offset of [-30_000, 0, 30_000]) {
+    if (await totpCode(secret, time + offset) === supplied) return true;
+  }
+  return false;
+}
+function createRecoveryCodes(): string[] {
+  return Array.from({ length: 10 }, () => {
+    const bytes = crypto.getRandomValues(new Uint8Array(4));
+    const raw = Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
+    return raw.slice(0, 4) + "-" + raw.slice(4, 8);
+  });
+}
+async function verifyMfaCode(settings: AnyRecord, supplied: string): Promise<boolean> {
+  const code = String(supplied || "").trim().toUpperCase();
+  const recoveryCodes: string[] = settings.recovery_codes ?? [];
+  const recoveryIndex = recoveryCodes.indexOf(code);
+  if (recoveryIndex >= 0) {
+    recoveryCodes.splice(recoveryIndex, 1);
+    settings.recovery_codes_remaining = recoveryCodes.length;
+    return true;
+  }
+  return Boolean(settings.secret && await verifyTotp(settings.secret, code));
+}
+
 const now = () => new Date().toISOString();
 const today = () => now().slice(0, 10);
 const addDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
@@ -262,6 +341,12 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     const email = String(body.email || "").toLowerCase();
     const found = state.users.find((u: AnyRecord) => u.email.toLowerCase() === email && u.is_active);
     if (!found) throw new DemoFault(401, "invalid_credentials", "No workspace account matches that email address");
+    if (found.mfa_enabled) {
+      state.mfaPending ??= {};
+      const pendingToken = uid();
+      state.mfaPending[pendingToken] = found.id;
+      return json({ mfa_required: true, access_token: null, expires_in: null, mfa_pending_token: pendingToken });
+    }
     state.activeUserId = found.id;
     found.last_login_at = now();
     return json({ mfa_required: false, access_token: "agencyos-local-session", expires_in: 900, mfa_pending_token: null });
@@ -304,8 +389,17 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     return json({ access_token: "agencyos-local-session", expires_in: 900 }, 201);
   }
   if (method === "POST" && path === "/auth/mfa/verify") {
-    const target = byId(state.users, state.activeUserId) ?? state.users[0];
+    const pendingToken = String(body.mfa_pending_token || "");
+    const targetId = state.mfaPending?.[pendingToken];
+    if (!targetId) throw new DemoFault(401, "mfa_token_invalid", "The sign-in verification session has expired");
+    const target = assertRow(state.users, targetId, "User");
+    const settings = state.mfa[target.id] ?? {};
+    if (!await verifyMfaCode(settings, String(body.code || ""))) {
+      throw new DemoFault(401, "invalid_mfa_code", "The authenticator or recovery code is invalid");
+    }
     state.activeUserId = target.id;
+    target.last_login_at = now();
+    delete state.mfaPending[pendingToken];
     return json({ access_token: "agencyos-local-session", expires_in: 900 });
   }
   if (method === "POST" && path === "/auth/logout") { state.activeUserId = null; return empty(); }
@@ -315,19 +409,35 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     return json({ mfa_enabled: Boolean(settings.enabled), enrolled_at: settings.enrolled_at ?? null, recovery_codes_remaining: settings.recovery_codes_remaining ?? 0 });
   }
   if (method === "POST" && path === "/auth/mfa/enroll") {
-    const secret = "JBSWY3DPEHPK3PXP";
-    state.mfa[user!.id] = { secret, pending: true };
-    return json({ secret, otpauth_uri: "otpauth://totp/AgencyOS:" + encodeURIComponent(user!.email) + "?secret=" + secret + "&issuer=AgencyOS", qr_code_svg: "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" height=\"120\"><rect width=\"120\" height=\"120\" fill=\"white\"/><text x=\"8\" y=\"60\" font-size=\"10\">AgencyOS local MFA</text></svg>" });
+    const secretBytes = crypto.getRandomValues(new Uint8Array(20));
+    const secret = base32Encode(secretBytes);
+    state.mfa ??= {};
+    state.mfa[user!.id] = { secret, pending: true, enabled: false, recovery_codes: [], recovery_codes_remaining: 0 };
+    const label = encodeURIComponent("AgencyOS:" + user!.email);
+    const otpauth = "otpauth://totp/" + label + "?secret=" + secret + "&issuer=AgencyOS&algorithm=SHA1&digits=6&period=30";
+    return json({ secret, otpauth_uri: otpauth, qr_code_svg: "" });
   }
   if (method === "POST" && path === "/auth/mfa/enroll/confirm") {
     const settings = state.mfa[user!.id] ?? {};
-    if (!settings.pending) conflict("Start MFA enrollment first", "mfa_not_pending");
-    settings.enabled = true; settings.pending = false; settings.enrolled_at = now(); settings.recovery_codes_remaining = 10;
+    if (!settings.pending || !settings.secret) conflict("Start MFA enrollment first", "mfa_not_pending");
+    const code = String(body.code || "").trim();
+    if (!await verifyTotp(settings.secret, code)) throw new DemoFault(422, "invalid_mfa_code", "Enter the current six-digit code from your authenticator app");
+    const recoveryCodes = createRecoveryCodes();
+    settings.enabled = true;
+    settings.pending = false;
+    settings.enrolled_at = now();
+    settings.recovery_codes = recoveryCodes.slice();
+    settings.recovery_codes_remaining = recoveryCodes.length;
     user!.mfa_enabled = true;
-    return json({ recovery_codes: Array.from({ length: 10 }, (_, i) => "AGENCY-" + String(i + 1).padStart(4, "0")) });
+    return json({ recovery_codes: recoveryCodes });
   }
   if (method === "POST" && path === "/auth/mfa/disable") {
-    user!.mfa_enabled = false; state.mfa[user!.id] = { enabled: false, recovery_codes_remaining: 0 };
+    const settings = state.mfa[user!.id] ?? {};
+    if (!settings.enabled || !await verifyMfaCode(settings, String(body.code || ""))) {
+      throw new DemoFault(401, "invalid_mfa_code", "The authenticator or recovery code is invalid");
+    }
+    user!.mfa_enabled = false;
+    state.mfa[user!.id] = { enabled: false, recovery_codes: [], recovery_codes_remaining: 0 };
     return empty();
   }
 
