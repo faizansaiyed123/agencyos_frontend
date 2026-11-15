@@ -1,5 +1,5 @@
 import { emitDemoEvent } from "./events";
-import { getDemoState, withDemoState } from "./store";
+import { withDemoState } from "./store";
 
 type AnyRecord = Record<string, any>;
 type DemoRequest = { request: Request; path: string; method: string; query: URLSearchParams; body: AnyRecord };
@@ -729,7 +729,9 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
 }
 
 export async function demoFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const request = new Request(input, init);
+  // Native fetch accepts relative paths; Request requires an absolute URL.
+  const target = input instanceof Request ? input : new URL(String(input), window.location.origin);
+  const request = new Request(target, init);
   const url = new URL(request.url, window.location.origin);
   const path = url.pathname.replace(/^\/api\/v1/, "") || "/";
   let body: AnyRecord = {};
