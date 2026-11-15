@@ -12,7 +12,7 @@ import {
 } from "../api/hooks";
 import { can } from "../api/permissions";
 import { useNames } from "../api/useNames";
-import type { Invoice, InvoiceStatus } from "../api/types";
+import type { CreditNote, Invoice, InvoiceStatus, Payment, PaymentRefund } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { CommentsPanel, FilesPanel } from "../components/Collab";
 import { Empty, ErrorNote, Field, FormModal, PageHead, Spinner } from "../components/ui";
@@ -23,6 +23,7 @@ const TONE: Record<InvoiceStatus, string> = {
   sent: "blue",
   partially_paid: "sun",
   paid: "moss",
+  credited: "moss",
   void: "brick",
 };
 export const InvoiceBadge = ({ inv }: { inv: Invoice }) => (
@@ -135,7 +136,7 @@ export function Invoices() {
             >
               <option value="">All</option>
               <option value="overdue">Overdue</option>
-              {["draft", "sent", "partially_paid", "paid", "void"].map((s) => (
+              {["draft", "sent", "partially_paid", "paid", "credited", "void"].map((s) => (
                 <option key={s} value={s}>
                   {label(s)}
                 </option>
@@ -335,6 +336,11 @@ export function InvoiceDetail() {
   const project = useProject(inv?.project_id ?? "");
   const [line, setLine] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [crediting, setCrediting] = useState(false);
+  const [refundTarget, setRefundTarget] = useState<{
+    payment: Payment;
+    remainingCents: number;
+  } | null>(null);
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState("");
   const inv2 = ["invoice", "invoices", "unbilled", "time", "overview", "attention"];
@@ -363,6 +369,14 @@ export function InvoiceDetail() {
       }),
     inv2,
   );
+  const issueCreditNote = useAction(
+    (body: { amount_cents: number; issued_on: string; reason: string }) =>
+      api(`/invoices/${id}/credit-notes`, {
+        body,
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+      }),
+    [...inv2, "portal-credit-notes"],
+  );
   const downloadPdf = async () => {
     const blob = await apiBlob(`/invoices/${id}/pdf`);
     const url = URL.createObjectURL(blob);
@@ -381,7 +395,7 @@ export function InvoiceDetail() {
         <Link to="/invoices">Back to invoices</Link>
       </>
     );
-  const { lines, payments } = q.data;
+  const { lines, payments, refunds, credit_notes: creditNotes } = q.data;
   const manage = can(user?.role, "invoice:manage");
   const draft = inv.status === "draft";
   const client = clients.data?.items.find((c) => c.id === inv.client_id);
@@ -390,6 +404,17 @@ export function InvoiceDetail() {
     project.data?.milestones.filter(
       (m) => m.amount_cents && !lines.some((l) => l.milestone_id === m.id),
     ) ?? [];
+  const creditableCents = inv.total_cents - inv.credit_note_cents;
+  const canIssueCredit = manage && !["draft", "void", "credited"].includes(inv.status) && creditableCents > 0;
+  const downloadCreditNote = async (note: CreditNote) => {
+    const blob = await apiBlob(`/credit-notes/${note.id}/pdf`);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${note.number}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <>
@@ -447,11 +472,19 @@ export function InvoiceDetail() {
                 Record payment
               </button>
             )}
-            {manage && inv.status === "sent" && (
-              <button className="btn danger" onClick={() => setVoiding(true)}>
-                Void
+            {canIssueCredit && (
+              <button className="btn ghost" onClick={() => setCrediting(true)}>
+                Issue credit note
               </button>
             )}
+            {manage &&
+              inv.status === "sent" &&
+              inv.amount_paid_cents === 0 &&
+              inv.credit_note_cents === 0 && (
+                <button className="btn danger" onClick={() => setVoiding(true)}>
+                  Void
+                </button>
+              )}
           </>
         }
       />
@@ -464,12 +497,19 @@ export function InvoiceDetail() {
           rmLine.error ??
           setMeta.error ??
           void_.error ??
-          email.error
+          email.error ??
+          issueCreditNote.error
         }
       />
       {inv.status === "void" && (
         <div className="error">
           Voided {fmtDate(inv.voided_at ?? null)}: {inv.void_reason}
+        </div>
+      )}
+      {inv.status === "credited" && (
+        <div className="notice">
+          This invoice has been fully credited. Any cash returned to the client is recorded separately
+          in the refund ledger.
         </div>
       )}
       <div className="cols">
@@ -607,15 +647,115 @@ export function InvoiceDetail() {
                 <h3>Payments</h3>
               </header>
               <table>
+                <thead>
+                  <tr>
+                    <th>Received</th>
+                    <th>Method / reference</th>
+                    <th className="num">Amount</th>
+                    {manage && <th />}
+                  </tr>
+                </thead>
                 <tbody>
-                  {payments.map((p) => (
-                    <tr key={p.id}>
-                      <td>{fmtDate(p.paid_on)}</td>
+                  {payments.map((p) => {
+                    const paymentRefunds = refunds.filter((refund) => refund.payment_id === p.id);
+                    const refundedCents = paymentRefunds.reduce((sum, refund) => sum + refund.amount_cents, 0);
+                    const remainingCents = Math.max(p.amount_cents - refundedCents, 0);
+                    return (
+                      <tr key={p.id}>
+                        <td>{fmtDate(p.paid_on)}</td>
+                        <td>
+                          {label(p.method)}
+                          {p.reference && <div className="muted">{p.reference}</div>}
+                          {refundedCents > 0 && (
+                            <div className="muted">Refunded {money(refundedCents, inv.currency)}</div>
+                          )}
+                        </td>
+                        <td className="num">{money(p.amount_cents, inv.currency)}</td>
+                        {manage && (
+                          <td className="num">
+                            {remainingCents > 0 && inv.status !== "draft" && inv.status !== "void" && (
+                              <button
+                                className="btn sm ghost"
+                                onClick={() => setRefundTarget({ payment: p, remainingCents })}
+                              >
+                                Record refund
+                              </button>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {refunds.length > 0 && (
+            <div className="panel">
+              <header>
+                <h3>Refund history</h3>
+                <span className="muted">{refunds.length}</span>
+              </header>
+              <div className="body">
+                <p className="muted">
+                  These entries record refunds already processed outside AgencyOS. They do not initiate
+                  a transfer.
+                </p>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Reason / reference</th>
+                      <th>Method</th>
+                      <th className="num">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {refunds.map((refund: PaymentRefund) => (
+                      <tr key={refund.id}>
+                        <td>{fmtDate(refund.refunded_on)}</td>
+                        <td>
+                          {refund.reason}
+                          {refund.reference && <div className="muted">{refund.reference}</div>}
+                        </td>
+                        <td>{label(refund.method)}</td>
+                        <td className="num">{money(refund.amount_cents, inv.currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {creditNotes.length > 0 && (
+            <div className="panel">
+              <header>
+                <h3>Credit notes</h3>
+                <span className="muted">{creditNotes.length}</span>
+              </header>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Issued</th>
+                    <th>Number / reason</th>
+                    <th className="num">Amount</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {creditNotes.map((note) => (
+                    <tr key={note.id}>
+                      <td>{fmtDate(note.issued_on)}</td>
                       <td>
-                        {label(p.method)}
-                        <div className="muted">{p.reference}</div>
+                        <strong>{note.number}</strong>
+                        <div className="muted">{note.reason}</div>
                       </td>
-                      <td className="num">{money(p.amount_cents, inv.currency)}</td>
+                      <td className="num">{money(note.amount_cents, inv.currency)}</td>
+                      <td className="num">
+                        <button className="btn sm ghost" onClick={() => downloadCreditNote(note)}>
+                          PDF
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -671,10 +811,22 @@ export function InvoiceDetail() {
                 </dd>
                 <dt>Paid</dt>
                 <dd>{money(inv.amount_paid_cents, inv.currency)}</dd>
-                <dt>Balance</dt>
+                <dt>Refunded</dt>
+                <dd>{money(inv.amount_refunded_cents, inv.currency)}</dd>
+                <dt>Credit notes</dt>
+                <dd>{money(inv.credit_note_cents, inv.currency)}</dd>
+                <dt>Balance due</dt>
                 <dd>
                   <strong>{money(inv.balance_cents, inv.currency)}</strong>
                 </dd>
+                {inv.credit_balance_cents > 0 && (
+                  <>
+                    <dt>Client credit balance</dt>
+                    <dd>
+                      <strong>{money(inv.credit_balance_cents, inv.currency)}</strong>
+                    </dd>
+                  </>
+                )}
               </dl>
             </div>
           </div>
@@ -683,6 +835,21 @@ export function InvoiceDetail() {
       </div>
       {line && <LineForm id={id} onClose={() => setLine(false)} />}
       {paying && <PaymentForm inv={inv} onClose={() => setPaying(false)} />}
+      {crediting && (
+        <CreditNoteForm
+          inv={inv}
+          maxCents={creditableCents}
+          onClose={() => setCrediting(false)}
+        />
+      )}
+      {refundTarget && (
+        <RefundForm
+          inv={inv}
+          payment={refundTarget.payment}
+          remainingCents={refundTarget.remainingCents}
+          onClose={() => setRefundTarget(null)}
+        />
+      )}
       {voiding && (
         <FormModal
           title="Void invoice"
