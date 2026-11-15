@@ -57,7 +57,7 @@ function audit(state: AnyRecord, user: AnyRecord, action: string, entityType: st
   state.audit.unshift({ id: uid(), org_id: user.org_id, actor_user_id: user.id, action, entity_type: entityType, entity_id: entityId, data, created_at: now() });
 }
 function notify(state: AnyRecord, kind: string, title: string, entityType: string | null = null, entityId: string | null = null): void {
-  const notification = { id: uid(), kind, title, entity_type: entityType, entity_id: entityId, is_read: false, created_at: now() };
+  const notification = { id: uid(), user_id: state.activeUserId, kind, title, entity_type: entityType, entity_id: entityId, is_read: false, created_at: now() };
   state.notifications.unshift(notification);
   emitDemoEvent("notification", notification);
 }
@@ -404,7 +404,12 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     Object.assign(row, body); if (body.done !== undefined) { row.status = body.done ? "done" : "pending"; row.completed_at = body.done ? now() : null; } return recordResponse(row);
   }
   m = match(path, /^\/projects\/([^/]+)\/tasks$/);
-  if (m && method === "GET") { needPermission(user!, "project:read"); return json(state.tasks.filter((r: AnyRecord) => r.project_id === m![1] && (!query.get("status") || r.status === query.get("status")))); }
+  if (m && method === "GET") {
+    needPermission(user!, "project:read");
+    const p = assertRow(state.projects, m[1], "Project");
+    if (user!.role === "team_member" && !state.members.some((member: AnyRecord) => member.project_id === p.id && member.user_id === user!.id)) notFound("Project");
+    return json(state.tasks.filter((r: AnyRecord) => r.project_id === m![1] && (!query.get("status") || r.status === query.get("status"))));
+  }
   if (m && method === "POST") {
     needPermission(user!, "project:manage"); const p = assertRow(state.projects, m[1], "Project"); required(body.title, "title");
     const row = { id: uid(), project_id: p.id, milestone_id: body.milestone_id ?? null, title: body.title, description: body.description ?? null, status: "todo", priority: body.priority || "medium", assignee_user_id: body.assignee_user_id ?? null, due_date: body.due_date ?? null, estimate_minutes: body.estimate_minutes ?? null, completed_at: null, created_at: now() };
@@ -422,6 +427,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   m = match(path, /^\/projects\/([^/]+)$/);
   if (m && method === "GET") {
     needPermission(user!, "project:read"); const p = assertRow(state.projects, m[1], "Project");
+    if (user!.role === "team_member" && !state.members.some((member: AnyRecord) => member.project_id === p.id && member.user_id === user!.id)) notFound("Project");
     const tasks = state.tasks.filter((t: AnyRecord) => t.project_id === p.id);
     const task_counts: AnyRecord = { todo: 0, in_progress: 0, review: 0, done: 0 }; tasks.forEach((t: AnyRecord) => task_counts[t.status] = (task_counts[t.status] || 0) + 1);
     return json({ project: p, members: state.members.filter((r: AnyRecord) => r.project_id === p.id), milestones: state.milestones.filter((r: AnyRecord) => r.project_id === p.id), task_counts });
@@ -439,7 +445,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     const row = state.timeEntries.find((r: AnyRecord) => r.user_id === user!.id && !r.ended_at); if (!row) notFound("Running timer");
     row.ended_at = now(); row.minutes = Math.max(1, Math.ceil((Date.now() - new Date(row.started_at).getTime()) / 60_000)); return recordResponse(row);
   }
-  if (method === "GET" && path === "/time/timer") return json(state.timeEntries.find((r: AnyRecord) => r.user_id === user!.id && !r.ended_at) ?? null);
+  if (method === "GET" && path === "/time/timer") { needPermission(user!, "time:log"); return json(state.timeEntries.find((r: AnyRecord) => r.user_id === user!.id && !r.ended_at) ?? null); }
   if (method === "POST" && path === "/time/entries") {
     needPermission(user!, "time:log"); required(body.project_id, "project_id"); if (!(Number(body.minutes) >= 1 && Number(body.minutes) <= 1440)) invalid("Minutes must be between 1 and 1440", "validation_error");
     if (body.entry_date > today()) invalid("Cannot log time in the future", "future_entry");
@@ -578,15 +584,15 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     const note = assertRow(state.creditNotes, m[2], "Credit note"); return pdfResponse(note.number, [note.reason, "Amount: " + note.amount_cents]);
   }
 
-  if (method === "GET" && path === "/comments") return json(state.comments.filter((r: AnyRecord) => r.entity_type === query.get("entity_type") && r.entity_id === query.get("entity_id")));
+  if (method === "GET" && path === "/comments") { needPermission(user!, "comment:write"); return json(state.comments.filter((r: AnyRecord) => r.entity_type === query.get("entity_type") && r.entity_id === query.get("entity_id"))); }
   if (method === "POST" && path === "/comments") {
     needPermission(user!, "comment:write"); required(body.body, "body");
     const row = { id: uid(), entity_type: body.entity_type, entity_id: body.entity_id, author_id: user!.id, body: body.body, edited_at: null, created_at: now() };
     state.comments.push(row); notify(state, "comment.created", "New comment added", body.entity_type, body.entity_id); return json(row, 201);
   }
   m = match(path, /^\/comments\/([^/]+)$/);
-  if (m && method === "PATCH") { const row = assertRow(state.comments, m[1], "Comment"); if (row.author_id !== user!.id && !hasPermission(user!, "user:manage")) throw new DemoFault(403, "forbidden", "You cannot edit this comment"); row.body = body.body; row.edited_at = now(); return recordResponse(row); }
-  if (m && method === "DELETE") { const row = assertRow(state.comments, m[1], "Comment"); if (row.author_id !== user!.id && !hasPermission(user!, "user:manage")) throw new DemoFault(403, "forbidden", "You cannot delete this comment"); state.comments = state.comments.filter((r: AnyRecord) => r.id !== row.id); return empty(); }
+  if (m && method === "PATCH") { needPermission(user!, "comment:write"); const row = assertRow(state.comments, m[1], "Comment"); if (row.author_id !== user!.id && !hasPermission(user!, "user:manage")) throw new DemoFault(403, "forbidden", "You cannot edit this comment"); row.body = body.body; row.edited_at = now(); return recordResponse(row); }
+  if (m && method === "DELETE") { needPermission(user!, "comment:write"); const row = assertRow(state.comments, m[1], "Comment"); if (row.author_id !== user!.id && !hasPermission(user!, "user:manage")) throw new DemoFault(403, "forbidden", "You cannot delete this comment"); state.comments = state.comments.filter((r: AnyRecord) => r.id !== row.id); return empty(); }
   if (method === "POST" && path === "/approvals") {
     needPermission(user!, "approval:manage"); required(body.approver_id, "approver_id"); required(body.title, "title");
     const row = { id: uid(), entity_type: body.entity_type, entity_id: body.entity_id, title: body.title, requested_by: user!.id, approver_id: body.approver_id, status: "pending", decision_note: null, created_at: now() };
@@ -603,11 +609,11 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     else { if (approval.requested_by !== user!.id) throw new DemoFault(403, "forbidden", "Only the requester can cancel this request"); approval.status = "cancelled"; }
     notify(state, "approval." + approval.status, approval.title, approval.entity_type, approval.entity_id); return recordResponse(approval);
   }
-  if (method === "GET" && path === "/notifications") return json(state.notifications.slice(0, Number(query.get("limit") || 30)));
-  if (method === "GET" && path === "/notifications/unread-count") return json({ unread: state.notifications.filter((r: AnyRecord) => !r.is_read).length });
+  if (method === "GET" && path === "/notifications") return json(state.notifications.filter((r: AnyRecord) => r.user_id === user!.id).slice(0, Number(query.get("limit") || 30)));
+  if (method === "GET" && path === "/notifications/unread-count") return json({ unread: state.notifications.filter((r: AnyRecord) => r.user_id === user!.id && !r.is_read).length });
   if (method === "POST" && path === "/notifications/read") {
     const ids: string[] | null = body.ids ?? null; let count = 0;
-    state.notifications.forEach((r: AnyRecord) => { if (ids === null || ids.includes(r.id)) { if (!r.is_read) count += 1; r.is_read = true; } });
+    state.notifications.forEach((r: AnyRecord) => { if (r.user_id === user!.id && (ids === null || ids.includes(r.id))) { if (!r.is_read) count += 1; r.is_read = true; } });
     return json({ marked: count });
   }
   if (method === "POST" && path === "/notifications/stream-ticket") return json({ ticket: "local-event-stream", expires_in: 300 });
@@ -621,6 +627,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     return json({ open_pipeline_cents: sum(open.map((d: AnyRecord) => d.value_amount || 0)), won_this_month_cents: sum(won.filter((d: AnyRecord) => d.closed_at?.slice(0,7) === today().slice(0,7)).map((d: AnyRecord) => d.value_amount || 0)), won_ytd_cents: sum(won.map((d: AnyRecord) => d.value_amount || 0)), outstanding_cents: sum(unpaid.map((i: AnyRecord) => { refreshBalances(state, i); return i.balance_cents; })), overdue_cents: sum(unpaid.map((i: AnyRecord) => { refreshBalances(state, i); return i.is_overdue ? i.balance_cents : 0; })), collected_this_month_cents: sum(state.payments.filter((p: AnyRecord) => p.paid_on.slice(0,7) === today().slice(0,7)).map((p: AnyRecord) => p.amount_cents)), active_projects: active.length, unbilled_time_cents: sum(unbilled.map((e: AnyRecord) => Math.round(e.minutes / 60 * (e.rate_cents || 0)))), pending_time_approvals: state.timeEntries.filter((e: AnyRecord) => e.status === "draft").length });
   }
   if (method === "GET" && path === "/reports/attention") {
+    needPermission(user!, "report:read");
     const rows: AnyRecord[] = [];
     state.invoices.forEach((i: AnyRecord) => { refreshBalances(state, i); if (i.is_overdue) rows.push({ kind: "overdue_invoice", severity: "high", entity_type: "invoice", entity_id: i.id, title: "Overdue invoice " + i.number, detail: "Outstanding balance: " + i.balance_cents }); });
     state.projects.forEach((p: AnyRecord) => { const late = p.due_date && p.due_date < today() && p.status === "active"; if (late) rows.push({ kind: "late_project", severity: "medium", entity_type: "project", entity_id: p.id, title: p.name + " is past its due date", detail: "Review project delivery status" }); });
@@ -628,19 +635,23 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     return json(rows);
   }
   if (method === "GET" && path === "/reports/revenue") {
+    needPermission(user!, "report:read");
     const months = Math.min(36, Math.max(1, Number(query.get("months") || 12)));
     return json(Array.from({ length: months }, (_, index) => { const at = new Date(); at.setDate(1); at.setMonth(at.getMonth() - (months - index - 1)); const key = at.toISOString().slice(0,7); const invoices = state.invoices.filter((i: AnyRecord) => i.issue_date?.slice(0,7) === key); const invoiceIds = invoices.map((i: AnyRecord) => i.id); return { month: key, invoiced_cents: sum(invoices.map((i: AnyRecord) => i.total_cents)), collected_cents: sum(state.payments.filter((p: AnyRecord) => invoiceIds.includes(p.invoice_id) && p.paid_on.slice(0,7) === key).map((p: AnyRecord) => p.amount_cents)) }; }));
   }
   if (method === "GET" && path === "/reports/pipeline") {
+    needPermission(user!, "report:read");
     const stages = ["lead","qualified","proposal_sent","negotiation","won","lost"].map((stage) => { const deals = state.deals.filter((d: AnyRecord) => d.stage === stage); return { stage, deals: deals.length, value_cents: sum(deals.map((d: AnyRecord) => d.value_amount || 0)) }; });
     const won = state.deals.filter((d: AnyRecord) => d.stage === "won").length; const closed = state.deals.filter((d: AnyRecord) => ["won","lost"].includes(d.stage)).length;
     return json({ stages, win_rate: closed ? won / closed : null, avg_days_to_win: 24 });
   }
   if (method === "GET" && path === "/reports/utilization") {
+    needPermission(user!, "report:read");
     return json(state.users.filter((u: AnyRecord) => u.role !== "client").map((u: AnyRecord) => { const entries = state.timeEntries.filter((e: AnyRecord) => e.user_id === u.id); const minutes = sum(entries.map((e: AnyRecord) => e.minutes)); const billable_minutes = sum(entries.filter((e: AnyRecord) => e.billable).map((e: AnyRecord) => e.minutes)); return { user_id: u.id, full_name: u.full_name, minutes, billable_minutes, billable_pct: minutes ? billable_minutes / minutes * 100 : 0 }; }));
   }
   m = match(path, /^\/reports\/projects\/([^/]+)$/);
   if (m && method === "GET") {
+    needPermission(user!, "report:read");
     const p = assertRow(state.projects, m[1], "Project"); const tasks = state.tasks.filter((t: AnyRecord) => t.project_id === p.id);
     const invoiced = state.invoices.filter((i: AnyRecord) => i.project_id === p.id); const time = state.timeEntries.filter((e: AnyRecord) => e.project_id === p.id);
     const timeValue = sum(time.map((e: AnyRecord) => Math.round(e.minutes / 60 * (e.rate_cents || 0))));
@@ -649,14 +660,59 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   }
   if (method === "GET" && path === "/search") {
     const q = (query.get("q") || "").toLowerCase(); if (q.length < 2) return json([]);
-    const collections = [{ type: "client", rows: state.clients, title: "name" }, { type: "deal", rows: state.deals, title: "title" }, { type: "proposal", rows: state.proposals, title: "title" }, { type: "project", rows: state.projects, title: "name" }, { type: "invoice", rows: state.invoices, title: "number" }, { type: "task", rows: state.tasks, title: "title" }];
+    const collections = [
+      { type: "client", permission: "client:read", rows: state.clients, title: "name" },
+      { type: "deal", permission: "deal:read", rows: state.deals, title: "title" },
+      { type: "proposal", permission: "proposal:read", rows: state.proposals, title: "title" },
+      { type: "project", permission: "project:read", rows: state.projects, title: "name" },
+      { type: "invoice", permission: "invoice:read", rows: state.invoices, title: "number" },
+      { type: "task", permission: "project:read", rows: state.tasks, title: "title" },
+    ].filter((collection) => hasPermission(user!, collection.permission));
+    const visible = collections.map((collection) => {
+      let rows = collection.rows;
+      if (user!.role === "team_member") {
+        if (collection.type === "project") rows = rows.filter((p: AnyRecord) => state.members.some((member: AnyRecord) => member.project_id === p.id && member.user_id === user!.id));
+        if (collection.type === "task") rows = rows.filter((task: AnyRecord) => state.members.some((member: AnyRecord) => member.project_id === task.project_id && member.user_id === user!.id));
+      }
+      return { ...collection, rows };
+    });
     const hits: AnyRecord[] = [];
-    collections.forEach((collection) => collection.rows.forEach((r: AnyRecord) => { const title = String(r[collection.title] || ""); const extra = String(r.description || r.notes || ""); if ((title + " " + extra).toLowerCase().includes(q)) hits.push({ type: collection.type, id: r.id, title: title || collection.type, snippet: extra || title, rank: 1 }); }));
+    visible.forEach((collection) => collection.rows.forEach((r: AnyRecord) => {
+      const title = String(r[collection.title] || "");
+      const extra = String(r.description || r.notes || "");
+      if ((title + " " + extra).toLowerCase().includes(q)) hits.push({ type: collection.type, id: r.id, title: title || collection.type, snippet: extra || title, rank: 1 });
+    }));
     return json(hits.slice(0, 20));
   }
   if (method === "POST" && path === "/assistant/ask") {
-    const q = String(body.question || ""); const matches = state.clients.filter((c: AnyRecord) => (c.name + " " + c.notes).toLowerCase().includes(q.toLowerCase().split(" ")[0]));
-    return json({ mode: "keyword", answer: matches.length ? "I found " + matches.length + " matching client record(s). Open the source below to inspect the underlying record." : "This assistant uses keyword search and report shortcuts. I could not find an exact matching record for that question.", sources: matches.map((c: AnyRecord) => ({ type: "client", id: c.id, title: c.name })) });
+    const flag = state.flags.find((f: AnyRecord) => f.key === "assistant");
+    if (!flag?.enabled || !hasPermission(user!, "client:read")) throw new DemoFault(403, "forbidden", "The assistant is not enabled for this account", undefined);
+    const q = String(body.question || "").toLowerCase().trim();
+    if (hasPermission(user!, "report:read") && /overdue|late invoices|unpaid/.test(q)) {
+      const overdue = state.invoices.filter((i: AnyRecord) => { refreshBalances(state, i); return i.is_overdue; });
+      return json({ mode: "keyword", answer: overdue.length ? overdue.map((i: AnyRecord) => "- Overdue invoice " + i.number).join("\n") : "No invoices are overdue.", sources: overdue.map((i: AnyRecord) => ({ type: "invoice", id: i.id, title: i.number || "Invoice" })) });
+    }
+    if (hasPermission(user!, "report:read") && /pipeline|open deals|forecast/.test(q)) {
+      const open = state.deals.filter((d: AnyRecord) => !["won","lost"].includes(d.stage));
+      const total = sum(open.map((d: AnyRecord) => d.value_amount || 0));
+      return json({ mode: "keyword", answer: "Open pipeline is " + total + " cents across " + open.length + " deals.", sources: [] });
+    }
+    const words = q.split(/\s+/).filter((word) => word.length > 2 && !["tell","about","what","who","where","when","how","show","find","the","and","for","with","can","you","please","give","any"].includes(word));
+    const term = words.join(" ");
+    const visibleCollections = [
+      { type: "client", permission: "client:read", rows: state.clients, title: "name" },
+      { type: "deal", permission: "deal:read", rows: state.deals, title: "title" },
+      { type: "proposal", permission: "proposal:read", rows: state.proposals, title: "title" },
+      { type: "project", permission: "project:read", rows: state.projects, title: "name" },
+      { type: "invoice", permission: "invoice:read", rows: state.invoices, title: "number" },
+      { type: "task", permission: "project:read", rows: state.tasks, title: "title" },
+    ].filter((collection) => hasPermission(user!, collection.permission));
+    const sources: AnyRecord[] = [];
+    if (term) visibleCollections.forEach((collection) => collection.rows.forEach((row: AnyRecord) => {
+      if (user!.role === "team_member" && collection.type === "task" && !state.members.some((member: AnyRecord) => member.project_id === row.project_id && member.user_id === user!.id)) return;
+      if ((String(row[collection.title] || "") + " " + String(row.description || row.notes || "")).toLowerCase().includes(term)) sources.push({ type: collection.type, id: row.id, title: row[collection.title] || collection.type });
+    }));
+    return json({ mode: "keyword", answer: sources.length ? "Closest matches:\n" + sources.slice(0,5).map((source) => "- " + source.type + ": " + source.title).join("\n") : "I couldn't find anything matching that.", sources: sources.slice(0,5) });
   }
 
   if (method === "GET" && path === "/flags/me") return json(Object.fromEntries(state.flags.map((f: AnyRecord) => [f.key, f.enabled && f.rollout_percent >= 100])));
@@ -667,7 +723,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     if (!row) { row = { key: m[1], description: "Workspace feature flag", enabled: false, rollout_percent: 0 }; state.flags.push(row); }
     row.enabled = Boolean(body.enabled); row.rollout_percent = Math.max(0, Math.min(100, cents(body.rollout_percent))); return recordResponse({ ...row, effective_for_me: row.enabled && row.rollout_percent >= 100 });
   }
-  if (method === "GET" && path === "/webhooks/event-types") return json(["client.created","deal.created","deal.stage_changed","proposal.sent","proposal.accepted","project.created","project.active","invoice.sent","invoice.paid","payment.recorded","payment.refunded","comment.created"]);
+  if (method === "GET" && path === "/webhooks/event-types") { needPermission(user!, "webhook:manage"); return json(["client.created","deal.created","deal.stage_changed","proposal.sent","proposal.accepted","project.created","project.active","invoice.sent","invoice.paid","payment.recorded","payment.refunded","comment.created"]);
   if (method === "GET" && path === "/webhooks") { needPermission(user!, "webhook:manage"); return json(state.webhooks); }
   if (method === "POST" && path === "/webhooks") {
     needPermission(user!, "webhook:manage"); required(body.url, "url"); if (!String(body.url).startsWith("https://")) invalid("Webhook endpoints must use HTTPS", "invalid_webhook_url");
@@ -711,8 +767,9 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   m = match(path, /^\/portal\/credit-notes\/([^/]+)\/pdf$/);
   if (m && method === "GET") { const note = assertRow(state.creditNotes, m[1], "Credit note"); const inv = assertRow(state.invoices, note.invoice_id, "Invoice"); if (inv.client_id !== user!.client_id) notFound("Credit note"); return pdfResponse(note.number, [note.reason, "Amount: " + note.amount_cents]); }
 
-  if (path === "/files" && method === "GET") return json(state.files.filter((f: AnyRecord) => f.entity_type === query.get("entity_type") && f.entity_id === query.get("entity_id")).map(({ data, ...rest }: AnyRecord) => rest));
+  if (path === "/files" && method === "GET") { needPermission(user!, "file:read"); return json(state.files.filter((f: AnyRecord) => f.entity_type === query.get("entity_type") && f.entity_id === query.get("entity_id")).map(({ data, ...rest }: AnyRecord) => rest)); }
   if (path === "/files" && method === "POST") {
+    needPermission(user!, "file:write");
     const form = await request.clone().formData();
     const fileEntry = form.get("file");
     const entityType = String(form.get("entity_type") || "project");
@@ -725,9 +782,9 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     state.files.push(row); return json((( { data: _data, ...rest }) => rest)(row), 201);
   }
   m = match(path, /^\/files\/([^/]+)\/download$/);
-  if (m && method === "GET") { const file = assertRow(state.files, m[1], "File"); return new Response(new Blob([file.data], { type: file.content_type }), { headers: { "Content-Type": file.content_type, "Content-Disposition": "attachment; filename=\"" + file.filename.replace(/"/g,"") + "\"" } }); }
+  if (m && method === "GET") { needPermission(user!, "file:read"); const file = assertRow(state.files, m[1], "File"); if (user!.role === "client" && !hasPermission(user!, "file:read")) notFound("File"); return new Response(new Blob([file.data], { type: file.content_type }), { headers: { "Content-Type": file.content_type, "Content-Disposition": "attachment; filename=\"" + file.filename.replace(/"/g,"") + "\"" } }); }
   m = match(path, /^\/files\/([^/]+)$/);
-  if (m && method === "DELETE") { const file = assertRow(state.files, m[1], "File"); state.files = state.files.filter((r: AnyRecord) => r.id !== file.id); return empty(); }
+  if (m && method === "DELETE") { needPermission(user!, "file:write"); const file = assertRow(state.files, m[1], "File"); state.files = state.files.filter((r: AnyRecord) => r.id !== file.id); return empty(); }
 
   throw new DemoFault(404, "not_found", "No local API route matches " + method + " " + path);
 }
