@@ -1,26 +1,18 @@
 # AgencyOS frontend
 
-React + TypeScript + Vite 6 single-page app for the AgencyOS backend repository.
-Every screen talks to the real API; there is no mock response layer.
+React + TypeScript + Vite 6 single-page app with a browser-executed AgencyOS workspace.
+The recruiter experience uses a local API-compatible runtime and IndexedDB persistence; it does not require a deployed or running backend. The backend repository is retained as the source-of-truth reference for business rules and API contracts.
 
 ## Run it
 
 ```bash
-# 1. Backend: TWO processes (the worker sends invite emails and webhooks)
-export AGENCYOS_COOKIE_SECURE=false          # local http only
-cd backend
-uvicorn app.main:app --port 8000
-python -m app.worker                          # in a second terminal
-
-# 2. Frontend
-cd frontend && npm install && npm run dev     # http://localhost:5173
+# Frontend only — no API server, PostgreSQL or worker is required
+npm install && npm run dev                   # http://localhost:5173
 npm run build                                 # production bundle in dist/
 npm run test:e2e                              # public-route browser smoke tests
 ```
 
-Vite proxies `/api` to `localhost:8000`, so the browser sees one origin. That matters:
-the refresh cookie is `SameSite=Strict`. In production serve `dist/` and the API from the
-same host behind one reverse proxy.
+The frontend routes its existing API contract through the browser-local runtime. Production builds can be served as static files behind Nginx or any SPA-capable static host.
 
 ## Screens
 
@@ -41,7 +33,7 @@ same host behind one reverse proxy.
 | Reports | Money KPIs, invoiced vs collected chart, team utilisation, pipeline and win rate |
 | Team | Users, roles, invites |
 | Settings | Webhooks (secret shown once, delivery log), feature flags with rollout, privacy export and erasure |
-| Everywhere | Live notifications bell (Server-Sent Events), approvals inbox, search and keyword assistant |
+| Everywhere | Local notifications, approvals inbox, search and keyword assistant |
 
 Buttons are shown or hidden from the role table in `src/api/permissions.ts` (a copy of
 `backend/app/core/permissions.py`). The server is always the authority.
