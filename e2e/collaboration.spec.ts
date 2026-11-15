@@ -31,7 +31,8 @@ test("project collaboration supports comments, file storage, and approvals", asy
   expect(download.suggestedFilename()).toBe(fileName);
 
   page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Delete" }).click();
+  const fileRow = page.getByRole("row").filter({ hasText: fileName });
+  await fileRow.getByRole("button", { name: "Delete" }).click();
   await expect(page.getByRole("button", { name: fileName })).toHaveCount(0);
 
   await page.getByRole("button", { name: /Request approval/ }).click();
