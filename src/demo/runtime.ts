@@ -487,51 +487,78 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (m && method === "PATCH") { needPermission(user!, "project:manage"); const p = assertRow(state.projects, m[1], "Project"); Object.assign(p, body, { updated_at: now() }); return recordResponse(p); }
 
   if (method === "POST" && path === "/time/timer/start") {
-    needPermission(user!, "time:log"); if (state.timeEntries.some((r: AnyRecord) => r.user_id === user!.id && !r.ended_at)) conflict("You already have a running timer", "timer_already_running");
-    const p = assertRow(state.projects, body.project_id, "Project"); const member = state.members.find((r: AnyRecord) => r.project_id === p.id && r.user_id === user!.id);
-    if (!member && user!.role !== "owner" && user!.role !== "admin" && user!.role !== "project_manager") throw new DemoFault(403, "forbidden", "You must be assigned to this project to log time");
-    const row = { id: uid(), user_id: user!.id, project_id: p.id, task_id: body.task_id ?? null, description: body.description ?? null, entry_date: today(), started_at: now(), ended_at: null, minutes: 0, billable: body.billable !== false, rate_cents: member?.hourly_rate_cents ?? null, status: "draft", approved_by: null, approved_at: null, invoice_id: null };
-    state.timeEntries.unshift(row); return json(row, 201);
+    needPermission(user!, "time:log");
+    if (state.timeEntries.some((r: AnyRecord) => r.user_id === user!.id && !r.ended_at)) conflict("You already have a running timer", "timer_already_running");
+    required(body.project_id, "project_id");
+    const member = loggableProject(state, user!, body.project_id, body.task_id);
+    const row = { id: uid(), user_id: user!.id, project_id: body.project_id, task_id: body.task_id ?? null, description: body.description ?? null, entry_date: today(), started_at: now(), ended_at: null, minutes: 0, billable: body.billable !== false, rate_cents: member.hourly_rate_cents ?? null, status: "draft", approved_by: null, approved_at: null, invoice_id: null };
+    state.timeEntries.unshift(row); audit(state, user!, "time.timer_started", "time_entry", row.id); return json(row, 201);
   }
   if (method === "POST" && path === "/time/timer/stop") {
+    needPermission(user!, "time:log");
     const row = state.timeEntries.find((r: AnyRecord) => r.user_id === user!.id && !r.ended_at); if (!row) notFound("Running timer");
-    row.ended_at = now(); row.minutes = Math.max(1, Math.ceil((Date.now() - new Date(row.started_at).getTime()) / 60_000)); return recordResponse(row);
+    row.ended_at = now(); row.minutes = Math.min(1440, Math.max(1, Math.ceil((Date.now() - new Date(row.started_at).getTime()) / 60_000))); return recordResponse(row);
   }
   if (method === "GET" && path === "/time/timer") { needPermission(user!, "time:log"); return json(state.timeEntries.find((r: AnyRecord) => r.user_id === user!.id && !r.ended_at) ?? null); }
   if (method === "POST" && path === "/time/entries") {
-    needPermission(user!, "time:log"); required(body.project_id, "project_id"); if (!(Number(body.minutes) >= 1 && Number(body.minutes) <= 1440)) invalid("Minutes must be between 1 and 1440", "validation_error");
-    if (body.entry_date > today()) invalid("Cannot log time in the future", "future_entry");
-    const p = assertRow(state.projects, body.project_id, "Project"); const member = state.members.find((r: AnyRecord) => r.project_id === p.id && r.user_id === user!.id);
-    const row = { id: uid(), user_id: user!.id, project_id: p.id, task_id: body.task_id ?? null, description: body.description ?? null, entry_date: body.entry_date || today(), started_at: now(), ended_at: now(), minutes: Number(body.minutes), billable: body.billable !== false, rate_cents: member?.hourly_rate_cents ?? null, status: "draft", approved_by: null, approved_at: null, invoice_id: null };
+    needPermission(user!, "time:log"); required(body.project_id, "project_id");
+    const minutes = Number(body.minutes);
+    if (!(Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440)) invalid("Minutes must be between 1 and 1440", "validation_error");
+    const entryDate = body.entry_date || today();
+    if (entryDate > today()) invalid("Cannot log time in the future", "future_entry");
+    const member = loggableProject(state, user!, body.project_id, body.task_id);
+    const loggedToday = sum(state.timeEntries.filter((entry: AnyRecord) => entry.user_id === user!.id && entry.entry_date === entryDate).map((entry: AnyRecord) => entry.minutes));
+    if (loggedToday + minutes > 1440) invalid("That would exceed 24 hours in a day", "day_overflow");
+    const row = { id: uid(), user_id: user!.id, project_id: body.project_id, task_id: body.task_id ?? null, description: body.description ?? null, entry_date: entryDate, started_at: now(), ended_at: now(), minutes, billable: body.billable !== false, rate_cents: member.hourly_rate_cents ?? null, status: "draft", approved_by: null, approved_at: null, invoice_id: null };
     state.timeEntries.unshift(row); audit(state, user!, "time.logged", "time_entry", row.id, { minutes: row.minutes }); return json(row, 201);
   }
   if (method === "GET" && path === "/time/entries") {
+    needPermission(user!, "time:log");
     let rows = state.timeEntries.slice();
-    if (!hasPermission(user!, "time:read_all")) rows = rows.filter((r: AnyRecord) => r.user_id === user!.id);
+    if (hasPermission(user!, "time:read_all")) {
+      if (query.get("user_id")) rows = rows.filter((r: AnyRecord) => r.user_id === query.get("user_id"));
+    } else rows = rows.filter((r: AnyRecord) => r.user_id === user!.id);
     if (query.get("project_id")) rows = rows.filter((r: AnyRecord) => r.project_id === query.get("project_id"));
     if (query.get("status")) rows = rows.filter((r: AnyRecord) => r.status === query.get("status"));
     if (query.get("date_from")) rows = rows.filter((r: AnyRecord) => r.entry_date >= query.get("date_from")!);
     if (query.get("date_to")) rows = rows.filter((r: AnyRecord) => r.entry_date <= query.get("date_to")!);
-    return json(rows.slice(0, Number(query.get("limit") || 100)));
+    const offset = Math.max(0, Number(query.get("offset") || 0));
+    return json(rows.slice(offset, offset + Number(query.get("limit") || 100)));
   }
   if (method === "GET" && path === "/time/summary") {
-    const entries = state.timeEntries.filter((r: AnyRecord) => r.status !== "invoiced");
+    needPermission(user!, "time:log");
+    let entries = state.timeEntries.slice();
+    if (!hasPermission(user!, "time:read_all")) entries = entries.filter((r: AnyRecord) => r.user_id === user!.id);
+    if (query.get("project_id")) entries = entries.filter((r: AnyRecord) => r.project_id === query.get("project_id"));
+    if (query.get("date_from")) entries = entries.filter((r: AnyRecord) => r.entry_date >= query.get("date_from")!);
+    if (query.get("date_to")) entries = entries.filter((r: AnyRecord) => r.entry_date <= query.get("date_to")!);
     const groups = new Map<string, AnyRecord>();
     entries.forEach((e: AnyRecord) => { const key = e.project_id + ":" + e.user_id; const row = groups.get(key) ?? { project_id: e.project_id, user_id: e.user_id, minutes: 0, billable_minutes: 0, amount_cents: 0 }; row.minutes += e.minutes; if (e.billable) { row.billable_minutes += e.minutes; row.amount_cents += Math.round(e.minutes / 60 * (e.rate_cents || 0)); } groups.set(key, row); });
     return json(Array.from(groups.values()));
   }
   m = match(path, /^\/time\/entries\/([^/]+)$/);
   if (m && (method === "PATCH" || method === "DELETE")) {
-    const row = assertRow(state.timeEntries, m[1], "Time entry");
-    if (row.user_id !== user!.id && !hasPermission(user!, "time:read_all")) throw new DemoFault(403, "forbidden", "You cannot change this time entry");
-    if (row.status !== "draft") conflict("Only draft time entries can be changed", "time_entry_not_editable");
-    if (method === "DELETE") { state.timeEntries = state.timeEntries.filter((r: AnyRecord) => r.id !== row.id); return empty(); }
-    Object.assign(row, body); return recordResponse(row);
+    needPermission(user!, "time:log");
+    const row = state.timeEntries.find((entry: AnyRecord) => entry.id === m![1] && entry.user_id === user!.id);
+    if (!row) notFound("Time entry");
+    if (row.status !== "draft") conflict("Entry is " + row.status + " and can no longer be changed", "entry_locked");
+    if (!row.ended_at) conflict("Stop the timer first", "timer_running");
+    if (method === "DELETE") { state.timeEntries = state.timeEntries.filter((r: AnyRecord) => r.id !== row.id); audit(state, user!, "time.deleted", "time_entry", row.id); return empty(); }
+    if (body.entry_date && body.entry_date > today()) invalid("Cannot log time in the future", "future_entry");
+    if (body.minutes !== undefined && !(Number.isInteger(Number(body.minutes)) && Number(body.minutes) >= 1 && Number(body.minutes) <= 1440)) invalid("Minutes must be between 1 and 1440", "validation_error");
+    if (body.task_id) { const task = assertRow(state.tasks, body.task_id, "Task"); if (task.project_id !== row.project_id) invalid("Task is not part of this project", "task_mismatch"); }
+    Object.assign(row, body); audit(state, user!, "time.updated", "time_entry", row.id); return recordResponse(row);
   }
   if (method === "POST" && path === "/time/approve") {
-    needPermission(user!, "time:approve"); const ids: string[] = body.entry_ids ?? []; if (!ids.length) invalid("Select at least one time entry", "validation_error");
+    needPermission(user!, "time:approve"); const ids: string[] = Array.from(new Set(body.entry_ids ?? [])); if (!ids.length) invalid("Select at least one time entry", "validation_error");
     const rows = ids.map((id) => assertRow(state.timeEntries, id, "Time entry"));
-    rows.forEach((r) => { if (r.status !== "draft") conflict("Only draft entries can be approved", "time_entry_not_approvable"); r.status = "approved"; r.approved_by = user!.id; r.approved_at = now(); });
+    rows.forEach((r) => {
+      if (r.user_id === user!.id) throw new DemoFault(403, "forbidden", "You cannot approve your own time");
+      if (!r.ended_at) conflict("A running timer cannot be approved", "timer_running");
+      if (r.status !== "draft") conflict("Entry is already " + r.status, "invalid_status_transition");
+    });
+    rows.forEach((r) => { r.status = "approved"; r.approved_by = user!.id; r.approved_at = now(); notify(state, "time_approved", "Your " + r.minutes + " min entry was approved", "project", r.project_id, r.user_id); });
+    audit(state, user!, "time.approved", "time_entry", rows[0].id, { count: rows.length });
     return json(rows);
   }
 
