@@ -523,7 +523,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     state.users.unshift(created);
     state.activeUserId = created.id;
     audit(state, created, "invite.accepted", "user", created.id, { invite_id: invite.id });
-    return json({ access_token: "agencyos-local-session", expires_in: 900 }, 201);
+    return json({ access_token: "agencyos-local-session", token_type: "bearer", expires_in: 900 }, 201);
   }
   if (method === "POST" && path === "/auth/mfa/verify") {
     const pendingToken = String(body.mfa_pending_token || "");
@@ -537,7 +537,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     state.activeUserId = target.id;
     target.last_login_at = now();
     delete state.mfaPending[pendingToken];
-    return json({ access_token: "agencyos-local-session", expires_in: 900 });
+    return json({ access_token: "agencyos-local-session", token_type: "bearer", expires_in: 900 });
   }
   if (method === "POST" && path === "/auth/logout") { state.activeUserId = null; return empty(); }
   if (method === "GET" && path === "/auth/me") return recordResponse(currentUser(state));
