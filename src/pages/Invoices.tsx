@@ -201,7 +201,6 @@ export function Invoices() {
   );
 }
 
-
 function CreditNoteForm({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
   const [f, setF] = useState({ amount: String(inv.balance_cents / 100), reason: "" });
   const [key] = useState(() => crypto.randomUUID());
@@ -315,7 +314,10 @@ function RefundForm({
         </Field>
       </div>
       <Field label="Reference">
-        <input value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} />
+        <input
+          value={f.reference}
+          onChange={(e) => setF({ ...f, reference: e.target.value })}
+        />
       </Field>
       <Field label="Reason">
         <textarea
@@ -580,11 +582,15 @@ export function InvoiceDetail() {
                 Record payment
               </button>
             )}
-            {manage && !draft && inv.status !== "void" && inv.status !== "credited" && creditableCents > 0 && (
-              <button className="btn ghost" onClick={() => setCrediting(true)}>
-                Issue credit note
-              </button>
-            )}
+            {manage &&
+              !draft &&
+              inv.status !== "void" &&
+              inv.status !== "credited" &&
+              creditableCents > 0 && (
+                <button className="btn ghost" onClick={() => setCrediting(true)}>
+                  Issue credit note
+                </button>
+              )}
             {manage && inv.status === "sent" && (
               <button className="btn danger" onClick={() => setVoiding(true)}>
                 Void
@@ -824,7 +830,10 @@ export function InvoiceDetail() {
                         </td>
                         <td className="num">
                           {manage && refundable > 0 && inv.status !== "void" && (
-                            <button className="btn sm ghost" onClick={() => setRefundingPayment(p)}>
+                            <button
+                              className="btn sm ghost"
+                              onClick={() => setRefundingPayment(p)}
+                            >
                               Refund
                             </button>
                           )}
