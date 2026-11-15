@@ -109,6 +109,27 @@ function notify(state: AnyRecord, kind: string, title: string, entityType: strin
   state.notifications.unshift(notification);
   emitDemoEvent("notification", notification);
 }
+function recordLocalWebhookEvent(state: AnyRecord, eventType: string, data: AnyRecord): void {
+  const createdAt = now();
+  const payload = { type: eventType, created_at: createdAt, data };
+  state.webhooks
+    .filter((endpoint: AnyRecord) => endpoint.is_active && (endpoint.events.includes("*") || endpoint.events.includes(eventType)))
+    .forEach((endpoint: AnyRecord) => {
+      state.deliveries.unshift({
+        id: uid(),
+        endpoint_id: endpoint.id,
+        event_type: eventType,
+        payload,
+        status: "pending",
+        attempts: 0,
+        response_status: null,
+        last_error: null,
+        created_at: createdAt,
+        delivered_at: null,
+        local_simulation: true,
+      });
+    });
+}
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 }
@@ -176,6 +197,7 @@ function createProjectFromProposal(state: AnyRecord, proposal: AnyRecord, user: 
   }));
   audit(state, user, "project.created_from_deal", "project", created.id, { deal_id: deal.id, budget: total });
   notify(state, "project.created", "A project was created from an accepted proposal", "project", created.id);
+  recordLocalWebhookEvent(state, "project.created", { project_id: created.id, name: created.name });
   return created;
 }
 function acceptProposal(state: AnyRecord, proposal: AnyRecord, user: AnyRecord): AnyRecord {
@@ -422,7 +444,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (method === "POST" && path === "/projects") {
     needPermission(user!, "project:manage"); required(body.client_id, "client_id"); required(body.name, "name"); assertRow(state.clients, body.client_id, "Client");
     const row = { id: uid(), client_id: body.client_id, deal_id: null, proposal_id: null, name: body.name, description: body.description ?? null, status: "planning", budget_amount: body.budget_amount ?? null, currency: body.currency || "USD", start_date: body.start_date ?? null, due_date: body.due_date ?? null, manager_user_id: body.manager_user_id || user!.id, created_at: now(), updated_at: now() };
-    state.projects.unshift(row); state.members.push({ project_id: row.id, user_id: row.manager_user_id, hourly_rate_cents: null }); audit(state, user!, "project.created", "project", row.id); return json(row, 201);
+    state.projects.unshift(row); state.members.push({ project_id: row.id, user_id: row.manager_user_id, hourly_rate_cents: null }); audit(state, user!, "project.created", "project", row.id); recordLocalWebhookEvent(state, "project.created", { project_id: row.id, name: row.name }); return json(row, 201);
   }
   m = match(path, /^\/projects\/([^/]+)\/status$/);
   if (m && method === "POST") {
@@ -433,7 +455,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
       const remaining = state.tasks.filter((t: AnyRecord) => t.project_id === p.id && t.status !== "done").length;
       if (remaining) invalid(remaining + " task(s) are not done yet", "open_tasks_remain");
     }
-    const previous = p.status; p.status = body.status; p.updated_at = now(); audit(state, user!, "project.status_changed", "project", p.id, { from: previous, to: p.status }); notify(state, "project." + p.status, p.name + " is now " + p.status, "project", p.id); return recordResponse(p);
+    const previous = p.status; p.status = body.status; p.updated_at = now(); audit(state, user!, "project.status_changed", "project", p.id, { from: previous, to: p.status }); notify(state, "project." + p.status, p.name + " is now " + p.status, "project", p.id); recordLocalWebhookEvent(state, "project." + p.status, { project_id: p.id, from: previous, to: p.status }); return recordResponse(p);
   }
   m = match(path, /^\/projects\/([^/]+)\/members(?:\/([^/]+))?$/);
   if (m && method === "POST") {
@@ -453,7 +475,9 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (m && (method === "PATCH" || method === "DELETE")) {
     needPermission(user!, "project:manage"); const row = assertRow(state.milestones, m[1], "Milestone");
     if (method === "DELETE") { if (state.tasks.some((t: AnyRecord) => t.milestone_id === row.id)) conflict("Move or remove milestone tasks before deleting this milestone"); state.milestones = state.milestones.filter((r: AnyRecord) => r.id !== row.id); return empty(); }
-    Object.assign(row, body); if (body.done !== undefined) { row.status = body.done ? "done" : "pending"; row.completed_at = body.done ? now() : null; } return recordResponse(row);
+    const wasDone = row.status === "done"; Object.assign(row, body); if (body.done !== undefined) { row.status = body.done ? "done" : "pending"; row.completed_at = body.done ? now() : null; }
+    if (!wasDone && row.status === "done") recordLocalWebhookEvent(state, "milestone.completed", { milestone_id: row.id, project_id: row.project_id });
+    return recordResponse(row);
   }
   m = match(path, /^\/projects\/([^/]+)\/tasks$/);
   if (m && method === "GET") {
@@ -465,7 +489,9 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (m && method === "POST") {
     needPermission(user!, "project:manage"); const p = assertRow(state.projects, m[1], "Project"); required(body.title, "title");
     const row = { id: uid(), project_id: p.id, milestone_id: body.milestone_id ?? null, title: body.title, description: body.description ?? null, status: "todo", priority: body.priority || "medium", assignee_user_id: body.assignee_user_id ?? null, due_date: body.due_date ?? null, estimate_minutes: body.estimate_minutes ?? null, completed_at: null, created_at: now() };
-    state.tasks.push(row); return json(row, 201);
+    state.tasks.push(row);
+    if (row.assignee_user_id) recordLocalWebhookEvent(state, "task.assigned", { task_id: row.id, assignee: row.assignee_user_id, title: row.title });
+    return json(row, 201);
   }
   if (method === "GET" && path === "/tasks/mine") { return json(state.tasks.filter((r: AnyRecord) => r.assignee_user_id === user!.id)); }
   m = match(path, /^\/tasks\/([^/]+)$/);
@@ -474,7 +500,11 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     if (!manager && !(hasPermission(user!, "task:update") && task.assignee_user_id === user!.id)) throw new DemoFault(403, "forbidden", "You cannot update this task");
     if (method === "DELETE") { if (!manager) throw new DemoFault(403, "forbidden", "Only project managers can delete tasks"); state.tasks = state.tasks.filter((r: AnyRecord) => r.id !== task.id); return empty(); }
     if (body.status && !["todo","in_progress","review","done"].includes(body.status)) invalid("Invalid task status", "invalid_task_status");
-    Object.assign(task, body); if (body.unassign) task.assignee_user_id = null; if (body.status === "done") task.completed_at = now(); if (body.status && body.status !== "done") task.completed_at = null; return recordResponse(task);
+    const previousAssignee = task.assignee_user_id; const previousStatus = task.status;
+    Object.assign(task, body); if (body.unassign) task.assignee_user_id = null; if (body.status === "done") task.completed_at = now(); if (body.status && body.status !== "done") task.completed_at = null;
+    if (task.assignee_user_id && task.assignee_user_id !== previousAssignee) recordLocalWebhookEvent(state, "task.assigned", { task_id: task.id, assignee: task.assignee_user_id, title: task.title });
+    if (previousStatus !== "done" && task.status === "done") recordLocalWebhookEvent(state, "task.completed", { task_id: task.id, project_id: task.project_id });
+    return recordResponse(task);
   }
   m = match(path, /^\/projects\/([^/]+)$/);
   if (m && method === "GET") {
@@ -559,6 +589,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     });
     rows.forEach((r) => { r.status = "approved"; r.approved_by = user!.id; r.approved_at = now(); notify(state, "time_approved", "Your " + r.minutes + " min entry was approved", "project", r.project_id, r.user_id); });
     audit(state, user!, "time.approved", "time_entry", rows[0].id, { count: rows.length });
+    recordLocalWebhookEvent(state, "time.approved", { entry_ids: rows.map((row: AnyRecord) => row.id) });
     return json(rows);
   }
 
@@ -572,7 +603,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (method === "POST" && path === "/invoices") {
     needPermission(user!, "invoice:manage"); required(body.client_id, "client_id"); assertRow(state.clients, body.client_id, "Client");
     const row = { id: uid(), client_id: body.client_id, project_id: body.project_id ?? null, number: null, status: "draft", currency: body.currency || "USD", issue_date: null, due_date: body.due_date ?? null, tax_rate_bps: cents(body.tax_rate_bps), subtotal_cents: 0, tax_cents: 0, total_cents: 0, amount_paid_cents: 0, amount_refunded_cents: 0, credit_note_cents: 0, balance_cents: 0, credit_balance_cents: 0, is_overdue: false, notes: body.notes ?? null, void_reason: null, voided_at: null, sent_at: null, paid_at: null, created_at: now() };
-    state.invoices.unshift(row); audit(state, user!, "invoice.created", "invoice", row.id); return json(row, 201);
+    state.invoices.unshift(row); audit(state, user!, "invoice.created", "invoice", row.id); recordLocalWebhookEvent(state, "invoice.created", { invoice_id: row.id }); return json(row, 201);
   }
   if (method === "GET" && path === "/invoices/unbilled-time") {
     needPermission(user!, "invoice:read"); const projectId = query.get("project_id");
@@ -618,7 +649,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     if (m[2] === "issue") {
       needPermission(user!, "invoice:manage"); if (inv.status !== "draft") conflict("Only draft invoices can be issued", "invoice_not_draft");
       refreshBalances(state, inv); if (!state.invoiceLines.some((l: AnyRecord) => l.invoice_id === inv.id) || inv.total_cents <= 0) invalid("Add at least one priced line before issuing", "invoice_empty");
-      inv.number = "INV-" + new Date().getFullYear() + "-" + String(state.nextNumber++).padStart(4, "0"); inv.status = "sent"; inv.issue_date = today(); inv.due_date = inv.due_date || addDays(30); inv.sent_at = now(); audit(state, user!, "invoice.issued", "invoice", inv.id); notify(state, "invoice.issued", "Invoice " + inv.number + " has been issued", "invoice", inv.id); return recordResponse(inv);
+      inv.number = "INV-" + new Date().getFullYear() + "-" + String(state.nextNumber++).padStart(4, "0"); inv.status = "sent"; inv.issue_date = today(); inv.due_date = inv.due_date || addDays(30); inv.sent_at = now(); audit(state, user!, "invoice.issued", "invoice", inv.id); notify(state, "invoice.issued", "Invoice " + inv.number + " has been issued", "invoice", inv.id); recordLocalWebhookEvent(state, "invoice.sent", { invoice_id: inv.id, number: inv.number, total_cents: inv.total_cents }); return recordResponse(inv);
     }
     if (m[2] === "send") {
       needPermission(user!, "invoice:manage"); if (inv.status === "draft") invalid("Issue an invoice before sending it", "invoice_not_issued");
@@ -627,7 +658,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     }
     if (m[2] === "void") {
       needPermission(user!, "invoice:manage"); if (inv.status !== "sent" || inv.amount_paid_cents || inv.credit_note_cents) conflict("Only an issued invoice with no payments or credit notes can be voided", "invoice_not_voidable");
-      inv.status = "void"; inv.voided_at = now(); inv.void_reason = body.reason; return recordResponse(inv);
+      inv.status = "void"; inv.voided_at = now(); inv.void_reason = body.reason; recordLocalWebhookEvent(state, "invoice.voided", { invoice_id: inv.id, number: inv.number }); return recordResponse(inv);
     }
     if (m[2] === "payments") {
       needPermission(user!, "invoice:manage"); refreshBalances(state, inv);
@@ -635,13 +666,16 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
       const paymentAmount = cents(body.amount_cents); if (paymentAmount <= 0) invalid("Payment amount must be positive", "validation_error");
       if (paymentAmount > inv.balance_cents) invalid("Payment exceeds the outstanding balance of " + inv.balance_cents + " cents", "overpayment");
       const payment = { id: uid(), invoice_id: inv.id, amount_cents: paymentAmount, paid_on: body.paid_on || today(), method: body.method || "bank_transfer", reference: body.reference ?? null, created_at: now() };
-      state.payments.push(payment); inv.amount_paid_cents += paymentAmount; refreshBalances(state, inv); if (inv.status === "paid") { inv.paid_at = now(); notify(state, "invoice.paid", "Invoice " + inv.number + " has been paid", "invoice", inv.id); } return json(payment, 201);
+      state.payments.push(payment); inv.amount_paid_cents += paymentAmount; refreshBalances(state, inv);
+      recordLocalWebhookEvent(state, "payment.recorded", { invoice_id: inv.id, amount_cents: paymentAmount });
+      if (inv.status === "paid") { inv.paid_at = now(); notify(state, "invoice.paid", "Invoice " + inv.number + " has been paid", "invoice", inv.id); recordLocalWebhookEvent(state, "invoice.paid", { invoice_id: inv.id, number: inv.number }); }
+      return json(payment, 201);
     }
     if (m[2] === "credit-notes") {
       needPermission(user!, "invoice:manage"); if (["draft","void","credited"].includes(inv.status)) conflict("This invoice cannot accept a credit note", "invoice_not_creditable");
       const credit = cents(body.amount_cents); if (credit <= 0 || credit > inv.total_cents - inv.credit_note_cents) invalid("Credit note exceeds the remaining creditable amount", "credit_note_exceeds_invoice");
       const row = { id: uid(), invoice_id: inv.id, number: "CN-" + new Date().getFullYear() + "-" + String(state.nextNumber++).padStart(4, "0"), amount_cents: credit, issued_on: body.issued_on || today(), reason: body.reason, created_by: user!.id, created_at: now() };
-      state.creditNotes.push(row); refreshBalances(state, inv); return json(row, 201);
+      state.creditNotes.push(row); refreshBalances(state, inv); recordLocalWebhookEvent(state, "credit_note.issued", { invoice_id: inv.id, credit_note_id: row.id, number: row.number, amount_cents: credit }); return json(row, 201);
     }
   }
   m = match(path, /^\/invoices\/([^/]+)\/payments\/([^/]+)\/refunds$/);
@@ -650,7 +684,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     const already = sum(state.refunds.filter((r: AnyRecord) => r.payment_id === payment.id).map((r: AnyRecord) => r.amount_cents));
     const value = cents(body.amount_cents); if (value <= 0 || value > payment.amount_cents - already) invalid("Refund exceeds the remaining refundable amount", "refund_exceeds_payment");
     const row = { id: uid(), payment_id: payment.id, amount_cents: value, refunded_on: body.refunded_on || today(), method: body.method || payment.method, reference: body.reference ?? null, reason: body.reason, created_by: user!.id, created_at: now() };
-    state.refunds.push(row); refreshBalances(state, inv); return json(row, 201);
+    state.refunds.push(row); refreshBalances(state, inv); recordLocalWebhookEvent(state, "payment.refunded", { invoice_id: inv.id, payment_id: payment.id, refund_id: row.id, amount_cents: value }); return json(row, 201);
   }
   m = match(path, /^\/invoices\/([^/]+)$/);
   if (m && method === "GET") { needPermission(user!, "invoice:read"); return json(invoiceDetail(state, m[1])); }
@@ -684,7 +718,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     const approver = assertRow(state.users, body.approver_id, "Approver");
     if (!approver.is_active || approver.role === "client") invalid("Choose an active staff approver", "invalid_approver");
     const row = { id: uid(), entity_type: body.entity_type, entity_id: body.entity_id, title: body.title, requested_by: user!.id, approver_id: body.approver_id, status: "pending", decision_note: null, created_at: now() };
-    state.approvals.unshift(row); notify(state, "approval.requested", row.title, row.entity_type, row.entity_id, row.approver_id); return json(row, 201);
+    state.approvals.unshift(row); notify(state, "approval.requested", row.title, row.entity_type, row.entity_id, row.approver_id); recordLocalWebhookEvent(state, "approval.requested", { approval_id: row.id, entity_type: row.entity_type, entity_id: row.entity_id }); return json(row, 201);
   }
   if (method === "GET" && path === "/approvals") {
     let rows = state.approvals.slice(); if (query.get("inbox") === "true") rows = rows.filter((a: AnyRecord) => a.approver_id === user!.id); else rows = rows.filter((a: AnyRecord) => a.requested_by === user!.id || a.approver_id === user!.id);
@@ -695,7 +729,9 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     const approval = assertRow(state.approvals, m[1], "Approval"); if (approval.status !== "pending") conflict("This approval has already been decided", "approval_already_decided");
     if (m[2] === "decide") { if (approval.approver_id !== user!.id && !hasPermission(user!, "user:manage")) throw new DemoFault(403, "forbidden", "Only the assigned approver can decide this request"); approval.status = body.approve ? "approved" : "rejected"; approval.decision_note = body.note ?? null; }
     else { if (approval.requested_by !== user!.id) throw new DemoFault(403, "forbidden", "Only the requester can cancel this request"); approval.status = "cancelled"; }
-    notify(state, "approval." + approval.status, approval.title, approval.entity_type, approval.entity_id, approval.requested_by); return recordResponse(approval);
+    notify(state, "approval." + approval.status, approval.title, approval.entity_type, approval.entity_id, approval.requested_by);
+    if (m[2] === "decide") recordLocalWebhookEvent(state, "approval.decided", { approval_id: approval.id, status: approval.status });
+    return recordResponse(approval);
   }
   if (method === "GET" && path === "/notifications") return json(state.notifications.filter((r: AnyRecord) => r.user_id === user!.id).slice(0, Number(query.get("limit") || 30)));
   if (method === "GET" && path === "/notifications/unread-count") return json({ unread: state.notifications.filter((r: AnyRecord) => r.user_id === user!.id && !r.is_read).length });
@@ -811,7 +847,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     if (!row) { row = { key: m[1], description: "Workspace feature flag", enabled: false, rollout_percent: 0 }; state.flags.push(row); }
     row.enabled = Boolean(body.enabled); row.rollout_percent = Math.max(0, Math.min(100, cents(body.rollout_percent))); return recordResponse({ ...row, effective_for_me: row.enabled && row.rollout_percent >= 100 });
   }
-  if (method === "GET" && path === "/webhooks/event-types") { needPermission(user!, "webhook:manage"); return json(["client.created","deal.created","deal.stage_changed","proposal.sent","proposal.accepted","project.created","project.active","invoice.sent","invoice.paid","payment.recorded","payment.refunded","comment.created"]); }
+  if (method === "GET" && path === "/webhooks/event-types") { needPermission(user!, "webhook:manage"); return json(["project.created","project.active","project.on_hold","project.completed","project.cancelled","milestone.completed","task.assigned","task.completed","invoice.created","invoice.sent","invoice.paid","invoice.voided","payment.recorded","payment.refunded","credit_note.issued","approval.requested","approval.decided","time.approved"]); }
   if (method === "GET" && path === "/webhooks") { needPermission(user!, "webhook:manage"); return json(state.webhooks); }
   if (method === "POST" && path === "/webhooks") {
     needPermission(user!, "webhook:manage"); required(body.url, "url"); if (!String(body.url).startsWith("https://")) invalid("Webhook endpoints must use HTTPS", "invalid_webhook_url");
