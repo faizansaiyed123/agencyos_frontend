@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import {
@@ -39,6 +39,7 @@ function DealForm({
   const clients = useClients();
   const users = useUsers();
   const nav = useNavigate();
+  const created = useRef(false);
   const [f, setF] = useState({
     client_id: initial?.client_id ?? presetClient ?? "",
     title: initial?.title ?? "",
@@ -65,10 +66,15 @@ function DealForm({
     <FormModal
       title={initial ? "Edit deal" : "New deal"}
       submitLabel={initial ? "Save changes" : "Create deal"}
-      onClose={onClose}
+      onClose={() => {
+        if (!created.current) onClose();
+      }}
       onSubmit={async () => {
         const d = await save.mutateAsync(undefined);
-        if (!initial) nav(`/deals/${(d as Deal).id}`);
+        if (!initial) {
+          created.current = true;
+          nav(`/deals/${(d as Deal).id}`);
+        }
       }}
     >
       {!initial && (
