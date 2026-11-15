@@ -74,7 +74,7 @@ test("reports, indexed search, keyword assistant, and privacy export use current
   await page.goto("/");
   await searchBox.fill("overdue invoices");
   await page.getByRole("button", { name: /Ask:/ }).click();
-  await expect(page.getByText(/Overdue invoice/)).toBeVisible();
+  await expect(page.locator(".dd-item.answer")).toContainText("Overdue invoice");
 
   await page.goto("/settings");
   const [download] = await Promise.all([
