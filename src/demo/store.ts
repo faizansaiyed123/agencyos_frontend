@@ -73,16 +73,30 @@ export async function getDemoState(): Promise<DemoState> {
   return cachedState;
 }
 
-export async function commitDemoState(): Promise<void> {
-  if (cachedState) await writeSnapshot(cachedState);
+function cloneDemoState(state: DemoState): DemoState {
+  if (typeof structuredClone === "function") return structuredClone(state);
+  const clone = (value: any): any => {
+    if (value instanceof Uint8Array) return new Uint8Array(value);
+    if (Array.isArray(value)) return value.map(clone);
+    if (value && typeof value === "object") {
+      const result: Record<string, any> = {};
+      for (const [key, item] of Object.entries(value)) result[key] = clone(item);
+      return result;
+    }
+    return value;
+  };
+  return clone(state);
 }
 
+/** Each request works on an isolated snapshot and commits only after success. */
 export async function withDemoState<T>(operation: (state: DemoState) => T | Promise<T>): Promise<T> {
   let result!: T;
   const next = writeQueue.then(async () => {
-    const state = await getDemoState();
-    result = await operation(state);
-    await commitDemoState();
+    const current = await getDemoState();
+    const working = cloneDemoState(current);
+    result = await operation(working);
+    await writeSnapshot(working);
+    cachedState = working;
   });
   writeQueue = next.catch(() => undefined);
   await next;
