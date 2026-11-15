@@ -824,7 +824,7 @@ export async function demoFetch(input: RequestInfo | URL, init?: RequestInit): P
           if (previous.request_fingerprint !== requestFingerprint) {
             conflict("The Idempotency-Key was reused with a different request", "idempotency_key_conflict");
           }
-          return previous.status === 204 ? empty() : json(previous.body, previous.status);
+          return previous.response_status === 204 ? empty() : json(previous.response_body, previous.response_status);
         }
       }
 
