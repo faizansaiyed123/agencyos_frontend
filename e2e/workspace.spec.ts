@@ -16,6 +16,7 @@ test("workspace roles, browser persistence, and reset work end to end", async ({
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Accept proposal" }).click();
   await expect(page.getByText("Client Portal Workflow Upgrade", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Reset workspace" }).click();
