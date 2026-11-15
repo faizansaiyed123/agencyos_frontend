@@ -723,7 +723,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     if (!row) { row = { key: m[1], description: "Workspace feature flag", enabled: false, rollout_percent: 0 }; state.flags.push(row); }
     row.enabled = Boolean(body.enabled); row.rollout_percent = Math.max(0, Math.min(100, cents(body.rollout_percent))); return recordResponse({ ...row, effective_for_me: row.enabled && row.rollout_percent >= 100 });
   }
-  if (method === "GET" && path === "/webhooks/event-types") { needPermission(user!, "webhook:manage"); return json(["client.created","deal.created","deal.stage_changed","proposal.sent","proposal.accepted","project.created","project.active","invoice.sent","invoice.paid","payment.recorded","payment.refunded","comment.created"]);
+  if (method === "GET" && path === "/webhooks/event-types") { needPermission(user!, "webhook:manage"); return json(["client.created","deal.created","deal.stage_changed","proposal.sent","proposal.accepted","project.created","project.active","invoice.sent","invoice.paid","payment.recorded","payment.refunded","comment.created"]); }
   if (method === "GET" && path === "/webhooks") { needPermission(user!, "webhook:manage"); return json(state.webhooks); }
   if (method === "POST" && path === "/webhooks") {
     needPermission(user!, "webhook:manage"); required(body.url, "url"); if (!String(body.url).startsWith("https://")) invalid("Webhook endpoints must use HTTPS", "invalid_webhook_url");
