@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { subscribeDemoEvents } from "../demo/events";
+import { resetWorkspace } from "../demo/runtime";
+import { useAuth } from "../auth/AuthContext";
 import { useAction, useApprovals, useNotifications, useSearch, useUnread } from "../api/hooks";
 import { useMyFlags } from "../api/hooks";
 import type { AskResult, EntityType } from "../api/types";
@@ -29,39 +32,16 @@ const safeSnippet = (s: string) =>
 export const routeFor = (type: string | null, id: string | null) =>
   type && id && ROUTE[type] ? ROUTE[type](id) : null;
 
-/** Live notifications: a short-lived ticket opens a Server-Sent-Events stream; on any
- * event we refetch. Reconnects with a fresh ticket if the stream drops. */
+/** Local domain events replace the server-sent event stream in the browser workspace. */
 function useLiveNotifications() {
   const qc = useQueryClient();
   useEffect(() => {
-    let es: EventSource | null = null;
-    let stopped = false;
-    let timer: number | undefined;
-    const connect = async () => {
-      try {
-        const { ticket } = await api<{ ticket: string }>("/notifications/stream-ticket", {
-          method: "POST",
-        });
-        if (stopped) return;
-        es = new EventSource(`/api/v1/notifications/stream?ticket=${encodeURIComponent(ticket)}`);
-        es.addEventListener("notification", () => {
-          for (const k of ["notifications", "unread", "tasks", "approvals"])
-            qc.invalidateQueries({ queryKey: [k] });
-        });
-        es.onerror = () => {
-          es?.close();
-          if (!stopped) timer = window.setTimeout(connect, 5000);
-        };
-      } catch {
-        if (!stopped) timer = window.setTimeout(connect, 10000);
+    return subscribeDemoEvents((event) => {
+      if (event.type === "notification" || event.type === "workspace.reset") {
+        for (const key of ["notifications", "unread", "tasks", "approvals", "overview", "attention"])
+          qc.invalidateQueries({ queryKey: [key] });
       }
-    };
-    connect();
-    return () => {
-      stopped = true;
-      es?.close();
-      window.clearTimeout(timer);
-    };
+    });
   }, [qc]);
 }
 
@@ -292,10 +272,65 @@ function SearchBox() {
   );
 }
 
+function WorkspaceControls() {
+  const { user, login } = useAuth();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const accounts = [
+    { email: "owner@agencyos.local", label: "Owner" },
+    { email: "alex@agencyos.local", label: "Account manager" },
+    { email: "sarah@agencyos.local", label: "Project manager" },
+    { email: "jamie@agencyos.local", label: "Team member" },
+    { email: "taylor@agencyos.local", label: "Finance" },
+    { email: "client@agencyos.local", label: "Client portal" },
+  ];
+  const switchAccount = async (email: string) => {
+    if (!email || email === user?.email) return;
+    setBusy(true);
+    try {
+      await login(email, "workspace-access");
+      qc.clear();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reset = async () => {
+    if (!window.confirm("Reset this browser workspace to its original sample records? Your local changes will be cleared.")) return;
+    setBusy(true);
+    try {
+      await resetWorkspace();
+      await login("owner@agencyos.local", "workspace-access");
+      qc.clear();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="workspace-controls">
+      <label className="sr-only" htmlFor="workspace-role">View workspace as</label>
+      <select
+        id="workspace-role"
+        aria-label="View workspace as"
+        value={accounts.some((account) => account.email === user?.email) ? user?.email : "owner@agencyos.local"}
+        disabled={busy}
+        onChange={(event) => void switchAccount(event.target.value)}
+      >
+        {accounts.map((account) => (
+          <option key={account.email} value={account.email}>{account.label}</option>
+        ))}
+      </select>
+      <button type="button" className="btn sm ghost" disabled={busy} onClick={() => void reset()}>
+        {busy ? "Working…" : "Reset workspace"}
+      </button>
+    </div>
+  );
+}
+
 export default function TopBar() {
   return (
     <div className="topbar">
       <SearchBox />
+      <WorkspaceControls />
       <Bell />
       <span className="sr-only">
         <Link to="/">Home</Link>
