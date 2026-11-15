@@ -6,10 +6,10 @@ test("workspace roles, browser persistence, and reset work end to end", async ({
 
   await page.getByLabel("View workspace as").selectOption("client@agencyos.local");
   await expect(page).toHaveURL(/\/portal$/);
-  await expect(page.getByRole("heading", { name: "Acme Global" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Acme Global", level: 1 })).toBeVisible();
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Acme Global" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Acme Global", level: 1 })).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Reset workspace" }).click();
