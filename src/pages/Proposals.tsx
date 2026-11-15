@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAction, useClients, useDeals, useProposal, useProposals } from "../api/hooks";
@@ -20,6 +20,7 @@ import { fmtDate, fromCents, lineTotal, money, toCents } from "../lib";
 function NewProposal({ presetDeal, onClose }: { presetDeal?: string; onClose: () => void }) {
   const deals = useDeals();
   const nav = useNavigate();
+  const created = useRef(false);
   const open = (deals.data?.items ?? []).filter((d) => d.stage !== "lost");
   const [dealId, setDealId] = useState(presetDeal ?? "");
   const [title, setTitle] = useState("");
@@ -46,9 +47,11 @@ function NewProposal({ presetDeal, onClose }: { presetDeal?: string; onClose: ()
       onSubmit={async () => {
         console.info("[proposal-ui] submit started", { dealId, title });
         const p = await create.mutateAsync(undefined);
-        console.info("[proposal-ui] mutation resolved", p);
+        created.current = true;
         nav(`/proposals/${(p as Proposal).id}`);
-        console.info("[proposal-ui] navigation requested", `/proposals/${(p as Proposal).id}`);
+      }}
+      onClose={() => {
+        if (!created.current) onClose();
       }}
     >
       <Field label="Deal">
