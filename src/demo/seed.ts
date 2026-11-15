@@ -140,5 +140,6 @@ export function createSeedState(): Record<string, any> {
     audit: [],
     idempotency: {},
     mfa: {},
+    mfaPending: {},
   };
 }
