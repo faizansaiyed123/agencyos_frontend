@@ -186,6 +186,57 @@ function loggableProject(state: AnyRecord, user: AnyRecord, projectId: string, t
 function audit(state: AnyRecord, user: AnyRecord, action: string, entityType: string, entityId: string, data: AnyRecord = {}): void {
   state.audit.unshift({ id: uid(), org_id: user.org_id, actor_user_id: user.id, action, entity_type: entityType, entity_id: entityId, data, created_at: now() });
 }
+function exportUserData(state: AnyRecord, target: AnyRecord): AnyRecord {
+  const byCreated = (rows: AnyRecord[]) => rows.slice().sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  return {
+    profile: {
+      id: target.id,
+      email: target.email,
+      full_name: target.full_name,
+      role: target.role,
+      is_active: target.is_active,
+      mfa_enabled: target.mfa_enabled,
+      last_login_at: target.last_login_at,
+      created_at: target.created_at,
+    },
+    time_entries: byCreated(state.timeEntries.filter((entry: AnyRecord) => entry.user_id === target.id))
+      .map((entry: AnyRecord) => ({
+        id: entry.id, project_id: entry.project_id, entry_date: entry.entry_date,
+        minutes: entry.minutes, billable: entry.billable, status: entry.status,
+        description: entry.description ?? null,
+      })),
+    comments: byCreated(state.comments.filter((comment: AnyRecord) => comment.author_id === target.id))
+      .map((comment: AnyRecord) => ({
+        id: comment.id, entity_type: comment.entity_type, entity_id: comment.entity_id,
+        body: comment.body, created_at: comment.created_at,
+      })),
+    assigned_tasks: byCreated(state.tasks.filter((task: AnyRecord) => task.assignee_user_id === target.id))
+      .map((task: AnyRecord) => ({
+        id: task.id, project_id: task.project_id, title: task.title,
+        status: task.status, due_date: task.due_date ?? null,
+      })),
+    notifications: byCreated(state.notifications.filter((notification: AnyRecord) => notification.user_id === target.id))
+      .map((notification: AnyRecord) => ({
+        id: notification.id, kind: notification.kind, title: notification.title,
+        is_read: notification.is_read, created_at: notification.created_at,
+      })),
+    approval_requests: byCreated(state.approvals.filter((approval: AnyRecord) =>
+      approval.requested_by === target.id || approval.approver_id === target.id
+    )).map((approval: AnyRecord) => ({
+      id: approval.id, title: approval.title, status: approval.status, created_at: approval.created_at,
+    })),
+    files_uploaded: byCreated(state.files.filter((file: AnyRecord) => file.uploaded_by === target.id))
+      .map((file: AnyRecord) => ({
+        id: file.id, filename: file.filename, size_bytes: file.size_bytes, created_at: file.created_at,
+      })),
+    audit_trail: state.audit.filter((entry: AnyRecord) => entry.actor_user_id === target.id)
+      .slice(-5000).map((entry: AnyRecord) => ({
+        action: entry.action, entity_type: entry.entity_type,
+        entity_id: entry.entity_id, created_at: entry.created_at,
+      })),
+  };
+}
+
 function notify(state: AnyRecord, kind: string, title: string, entityType: string | null = null, entityId: string | null = null, recipientUserId: string | null = state.activeUserId): void {
   const notification = { id: uid(), user_id: recipientUserId, kind, title, entity_type: entityType, entity_id: entityId, is_read: false, created_at: now() };
   state.notifications.unshift(notification);
@@ -1068,13 +1119,63 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (m && method === "PATCH") { needPermission(user!, "webhook:manage"); const row = assertRow(state.webhooks, m[1], "Webhook"); Object.assign(row, body); return recordResponse(row); }
   if (m && method === "DELETE") { needPermission(user!, "webhook:manage"); state.webhooks = state.webhooks.filter((r: AnyRecord) => r.id !== m![1]); state.deliveries = state.deliveries.filter((r: AnyRecord) => r.endpoint_id !== m![1]); return empty(); }
 
-  if (method === "GET" && path === "/privacy/export/me") return json({ exported_at: now(), user, organization: state.org, clients: state.clients, deals: state.deals, projects: state.projects, time_entries: state.timeEntries.filter((e: AnyRecord) => e.user_id === user!.id), audit: state.audit.filter((a: AnyRecord) => a.actor_user_id === user!.id) });
-  m = match(path, /^\/privacy\/export\/([^/]+)$/);
-  if (m && method === "GET") { needPermission(user!, "privacy:manage"); const target = assertRow(state.users, m[1], "User"); return json({ exported_at: now(), user: target, projects: state.projects.filter((p: AnyRecord) => state.members.some((member: AnyRecord) => member.project_id === p.id && member.user_id === target.id)), time_entries: state.timeEntries.filter((e: AnyRecord) => e.user_id === target.id) }); }
-  m = match(path, /^\/privacy\/erase\/([^/]+)$/);
-  if (m && method === "POST") { needPermission(user!, "privacy:manage"); const target = assertRow(state.users, m[1], "User"); if (target.id === user!.id) conflict("You cannot erase your own active account"); target.is_active = false; target.full_name = "Erased user"; target.email = "erased+" + target.id + "@agencyos.local"; audit(state, user!, "privacy.erase", "user", target.id); return json({ retained: ["Financial records required for accounting", "Audit records required for security"] }); }
+  if (method === "GET" && path === "/privacy/export/me") {
+    const data = exportUserData(state, user!);
+    audit(state, user!, "privacy.self_export", "user", user!.id);
+    return json(data);
+  }
+  m = match(path, /^\\/privacy\\/export\\/([^/]+)$/);
+  if (m && method === "GET") {
+    needPermission(user!, "privacy:manage");
+    const target = assertRow(state.users, m[1], "User");
+    const data = exportUserData(state, target);
+    audit(state, user!, "privacy.export", "user", target.id);
+    return json(data);
+  }
+  m = match(path, /^\\/privacy\\/erase\\/([^/]+)$/);
+  if (m && method === "POST") {
+    needPermission(user!, "privacy:manage");
+    const target = assertRow(state.users, m[1], "User");
+    if (target.id === user!.id) conflict("You cannot erase your own active account");
+    if (String(target.email).endsWith("@erased.invalid")) invalid("This user has already been erased", "already_erased");
+    if (target.role === "owner" && target.is_active) {
+      const activeOwners = state.users.filter((candidate: AnyRecord) =>
+        candidate.is_active && candidate.role === "owner"
+      ).length;
+      if (activeOwners <= 1) invalid("Transfer ownership before erasing the last owner", "last_owner");
+    }
+    target.email = "erased+" + target.id.replace(/-/g, "") + "@erased.invalid";
+    target.full_name = "Erased user";
+    target.is_active = false;
+    target.mfa_enabled = false;
+    state.mfa[target.id] = { enabled: false, recovery_codes: [], recovery_codes_remaining: 0 };
+    Object.keys(state.mfaPending ?? {}).forEach((token) => {
+      if (state.mfaPending[token] === target.id) delete state.mfaPending[token];
+    });
+    state.notifications = state.notifications.filter((notification: AnyRecord) => notification.user_id !== target.id);
+    state.comments.forEach((comment: AnyRecord) => {
+      if (comment.author_id === target.id) {
+        comment.body = "[removed on request]";
+        comment.mentions = [];
+        comment.edited_at = now();
+      }
+    });
+    state.tasks.forEach((task: AnyRecord) => {
+      if (task.assignee_user_id === target.id && task.status !== "done") task.assignee_user_id = null;
+    });
+    audit(state, user!, "privacy.user_erased", "user", target.id);
+    return json({
+      user_id: target.id,
+      erased: true,
+      retained: [
+        "invoices and payments you created (accounting retention)",
+        "time entries (billing evidence)",
+        "audit log entries (security record, now showing an anonymised actor)",
+      ],
+    });
+  }
 
-  if (method === "GET" && path === "/portal/overview") {
+    if (method === "GET" && path === "/portal/overview") {
     if (user!.role !== "client" || !user!.client_id) throw new DemoFault(403, "forbidden", "Client account required");
     const client = assertRow(state.clients, user!.client_id, "Client");
     const projects = state.projects.filter((p: AnyRecord) => p.client_id === client.id);
