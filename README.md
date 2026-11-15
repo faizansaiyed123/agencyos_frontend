@@ -35,12 +35,19 @@ The frontend routes its existing API contract through the browser-local runtime.
 | Settings | Webhooks (secret shown once, delivery log), feature flags with rollout, privacy export and erasure |
 | Everywhere | Local notifications, approvals inbox, search and keyword assistant |
 
-Buttons are shown or hidden from the role table in `src/api/permissions.ts` (a copy of
-`backend/app/core/permissions.py`). The server is always the authority.
+Navigation and actions follow the same role/permission matrix as the backend reference.
+In this browser-only workspace the checks are part of the client runtime; they are
+demonstration behavior, not a server-side security boundary.
 
 ## Notes
 - The assistant is full-text keyword search plus report shortcuts. It never generates text,
   and the UI labels it that way.
+- Workspace identities are preconfigured for exploration. This does not provide production
+  authentication or protect secrets behind a server.
+- Workspace changes are saved in the current browser profile and are not shared with other
+  recruiters or devices. Use Reset workspace to restore the seeded records.
+- Email, webhook delivery, payment processor actions and background workers are not invoked;
+  their visible lifecycle is simulated locally.
 - Money is integer cents end to end; `lib.ts` converts only at the input/display edge.
 - `src/api/types.ts` was checked against live responses for all 36 interfaces.
 
@@ -50,15 +57,17 @@ Buttons are shown or hidden from the role table in `src/api/permissions.ts` (a c
 `src/pages` screens.
 
 
+## Recruiter workspace
+
+The `recruiter-demo` branch contains a self-contained browser workspace. The frontend calls
+an API-compatible local runtime, executes the product's business rules, and persists records
+in IndexedDB. It does not require a backend URL, database, worker process, or deployed API.
+
+The companion backend branch is intentionally unchanged and is used as the source-of-truth
+reference for route contracts, data shapes, permissions and business workflows.
+
 ## Release verification
 
-Backend verification is run against the current backend `main` head, including Ruff, regression tests, and Docker build. The verified release gate is green.
-
-Frontend CI verifies the production frontend build, Playwright smoke flow, and Docker image.
-The companion backend compatibility workflow checks the backend repository's install, Ruff, tests,
-and Docker image from the same release branch so the split repositories are verified together.
-
-
-## Deployable release
-
-The current release has passed the production build, Playwright smoke test, Docker build, npm security audit, and backend compatibility gate.
+The recruiter-demo GitHub Actions workflow verifies the frontend production build,
+Playwright browser journeys and frontend container build. It does not install, start,
+test or deploy the backend.
