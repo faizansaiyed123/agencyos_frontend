@@ -44,8 +44,11 @@ function NewProposal({ presetDeal, onClose }: { presetDeal?: string; onClose: ()
       submitLabel="Create draft"
       onClose={onClose}
       onSubmit={async () => {
+        console.info("[proposal-ui] submit started", { dealId, title });
         const p = await create.mutateAsync(undefined);
+        console.info("[proposal-ui] mutation resolved", p);
         nav(`/proposals/${(p as Proposal).id}`);
+        console.info("[proposal-ui] navigation requested", `/proposals/${(p as Proposal).id}`);
       }}
     >
       <Field label="Deal">
