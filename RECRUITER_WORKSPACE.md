@@ -16,6 +16,12 @@ The FastAPI backend is not deployed, started, or required by this experience. Th
 - Domain events replace the backend Server-Sent Events stream for browser-local notifications.
 - File upload, download, invoice PDF, and portal PDF paths are handled without an API server.
 
+## Opening and exploring the workspace
+
+Opening the deployed frontend initializes a local Owner session automatically, so the workspace opens without a sign-in step. Use the **View workspace as** selector in the top bar to inspect Owner, Admin, Account Manager, Project Manager, Team Member, Finance, and Client Portal permissions. Use **Reset workspace** to restore the original linked records after experimenting.
+
+The browser stores this workspace in IndexedDB. It survives reloads and browser restarts in that same browser profile, but it is not shared with another recruiter's device or browser.
+
 ## Product behavior
 
 The runtime mirrors the backend's important workflow rules: forward-only deal stages, one-way proposal states, proposal acceptance creating a project and milestones, project completion requiring finished tasks, one active timer per user, approved-time billing, invoice settlement, and permission-aware actions.
@@ -24,7 +30,7 @@ The seeded workspace exposes Owner, Admin, Account Manager, Project Manager, Tea
 
 ## Boundaries
 
-This is a single-browser workspace, not a shared multi-user database or a secure server-side authorization boundary. External email, webhook delivery, payment processing, and background jobs are local simulations and do not contact external systems. No secrets are placed in browser code.
+This is a single-browser workspace, not a shared multi-user database or a secure server-side authorization boundary. Email and invite delivery, outbound webhooks, payment collection/refunds, and background jobs are local workflow simulations. They do not send messages, call external webhook URLs, charge or refund money, or run jobs on a server. Payment entries update only the browser-local invoice ledger. No secrets are placed in browser code.
 
 ## Verification
 
