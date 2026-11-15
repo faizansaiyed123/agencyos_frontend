@@ -229,7 +229,7 @@ function exportUserData(state: AnyRecord, target: AnyRecord): AnyRecord {
       .map((file: AnyRecord) => ({
         id: file.id, filename: file.filename, size_bytes: file.size_bytes, created_at: file.created_at,
       })),
-    audit_trail: state.audit.filter((entry: AnyRecord) => entry.actor_user_id === target.id)
+    audit_trail: byCreated(state.audit.filter((entry: AnyRecord) => entry.actor_user_id === target.id))
       .slice(-5000).map((entry: AnyRecord) => ({
         action: entry.action, entity_type: entry.entity_type,
         entity_id: entry.entity_id, created_at: entry.created_at,
@@ -1124,7 +1124,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     audit(state, user!, "privacy.self_export", "user", user!.id);
     return json(data);
   }
-  m = match(path, /^\\/privacy\\/export\\/([^/]+)$/);
+  m = match(path, /^\/privacy\/export\/([^/]+)$/);
   if (m && method === "GET") {
     needPermission(user!, "privacy:manage");
     const target = assertRow(state.users, m[1], "User");
@@ -1132,7 +1132,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     audit(state, user!, "privacy.export", "user", target.id);
     return json(data);
   }
-  m = match(path, /^\\/privacy\\/erase\\/([^/]+)$/);
+  m = match(path, /^\/privacy\/erase\/([^/]+)$/);
   if (m && method === "POST") {
     needPermission(user!, "privacy:manage");
     const target = assertRow(state.users, m[1], "User");
