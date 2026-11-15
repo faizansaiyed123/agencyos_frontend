@@ -12,7 +12,7 @@ import {
 } from "../api/hooks";
 import { can } from "../api/permissions";
 import { useNames } from "../api/useNames";
-import type { Invoice, InvoiceStatus } from "../api/types";
+import type { Invoice, InvoiceStatus, Payment } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { CommentsPanel, FilesPanel } from "../components/Collab";
 import { Empty, ErrorNote, Field, FormModal, PageHead, Spinner } from "../components/ui";
@@ -23,6 +23,7 @@ const TONE: Record<InvoiceStatus, string> = {
   sent: "blue",
   partially_paid: "sun",
   paid: "moss",
+  credited: "moss",
   void: "brick",
 };
 export const InvoiceBadge = ({ inv }: { inv: Invoice }) => (
@@ -200,6 +201,135 @@ export function Invoices() {
   );
 }
 
+
+function CreditNoteForm({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
+  const [f, setF] = useState({ amount: String(inv.balance_cents / 100), reason: "" });
+  const [key] = useState(() => crypto.randomUUID());
+  const create = useAction(
+    () =>
+      api(\`/invoices/\${inv.id}/credit-notes\`, {
+        body: { amount_cents: toCents(f.amount), reason: f.reason.trim() },
+        headers: { "Idempotency-Key": key },
+      }),
+    ["invoice", "invoices", "overview", "attention"],
+  );
+  return (
+    <FormModal
+      title="Issue credit note"
+      submitLabel="Issue credit note"
+      onClose={onClose}
+      onSubmit={() => create.mutateAsync(undefined)}
+    >
+      <p style={{ marginTop: 0 }}>
+        This permanently reduces the invoice receivable. Any amount credited beyond
+        the net amount still owed becomes a client credit balance.
+      </p>
+      <Field label="Credit amount">
+        <input
+          type="number"
+          min="0.01"
+          max={(inv.total_cents - inv.credit_note_cents) / 100}
+          step="0.01"
+          value={f.amount}
+          onChange={(e) => setF({ ...f, amount: e.target.value })}
+          required
+          autoFocus
+        />
+      </Field>
+      <Field label="Reason">
+        <textarea
+          value={f.reason}
+          onChange={(e) => setF({ ...f, reason: e.target.value })}
+          minLength={3}
+          required
+        />
+      </Field>
+      <ErrorNote error={create.error} />
+    </FormModal>
+  );
+}
+
+function RefundForm({
+  inv,
+  payment,
+  refundableCents,
+  onClose,
+}: {
+  inv: Invoice;
+  payment: Payment;
+  refundableCents: number;
+  onClose: () => void;
+}) {
+  const [f, setF] = useState({
+    amount: String(refundableCents / 100),
+    refunded_on: todayISO(),
+    reason: "",
+    reference: "",
+  });
+  const [key] = useState(() => crypto.randomUUID());
+  const refund = useAction(
+    () =>
+      api(\`/invoices/\${inv.id}/payments/\${payment.id}/refunds\`, {
+        body: {
+          amount_cents: toCents(f.amount),
+          refunded_on: f.refunded_on,
+          method: payment.method,
+          reference: f.reference || null,
+          reason: f.reason.trim(),
+        },
+        headers: { "Idempotency-Key": key },
+      }),
+    ["invoice", "invoices", "overview", "attention"],
+  );
+  return (
+    <FormModal
+      title="Record payment refund"
+      submitLabel="Record refund"
+      onClose={onClose}
+      onSubmit={() => refund.mutateAsync(undefined)}
+    >
+      <p style={{ marginTop: 0 }}>
+        Record a refund already processed externally. The original payment remains immutable.
+      </p>
+      <div className="grid2">
+        <Field label="Refund amount">
+          <input
+            type="number"
+            min="0.01"
+            max={refundableCents / 100}
+            step="0.01"
+            value={f.amount}
+            onChange={(e) => setF({ ...f, amount: e.target.value })}
+            required
+            autoFocus
+          />
+        </Field>
+        <Field label="Refunded on">
+          <input
+            type="date"
+            max={todayISO()}
+            value={f.refunded_on}
+            onChange={(e) => setF({ ...f, refunded_on: e.target.value })}
+            required
+          />
+        </Field>
+      </div>
+      <Field label="Reference">
+        <input value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} />
+      </Field>
+      <Field label="Reason">
+        <textarea
+          value={f.reason}
+          onChange={(e) => setF({ ...f, reason: e.target.value })}
+          minLength={3}
+          required
+        />
+      </Field>
+      <ErrorNote error={refund.error} />
+    </FormModal>
+  );
+}
+
 function PaymentForm({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
   const [f, setF] = useState({
     amount: String(inv.balance_cents / 100),
@@ -335,6 +465,8 @@ export function InvoiceDetail() {
   const project = useProject(inv?.project_id ?? "");
   const [line, setLine] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [crediting, setCrediting] = useState(false);
+  const [refundingPayment, setRefundingPayment] = useState<Payment | null>(null);
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState("");
   const inv2 = ["invoice", "invoices", "unbilled", "time", "overview", "attention"];
@@ -355,6 +487,7 @@ export function InvoiceDetail() {
     inv2,
   );
   const void_ = useAction(() => api(`/invoices/${id}/void`, { body: { reason } }), inv2);
+  const creditableCents = inv ? inv.total_cents - inv.credit_note_cents : 0;
   const email = useAction(
     () =>
       api(`/invoices/${id}/send`, {
@@ -445,6 +578,11 @@ export function InvoiceDetail() {
             {manage && (inv.status === "sent" || inv.status === "partially_paid") && (
               <button className="btn primary" onClick={() => setPaying(true)}>
                 Record payment
+              </button>
+            )}
+            {manage && !draft && inv.status !== "void" && inv.status !== "credited" && creditableCents > 0 && (
+              <button className="btn ghost" onClick={() => setCrediting(true)}>
+                Issue credit note
               </button>
             )}
             {manage && inv.status === "sent" && (
@@ -601,6 +739,64 @@ export function InvoiceDetail() {
               </div>
             </div>
           )}
+          {q.data.credit_notes.length > 0 && (
+            <div className="panel">
+              <header>
+                <h3>Credit notes</h3>
+              </header>
+              <table>
+                <tbody>
+                  {q.data.credit_notes.map((note) => (
+                    <tr key={note.id}>
+                      <td>
+                        <strong>{note.number}</strong>
+                        <div className="muted">{fmtDate(note.issued_on)}</div>
+                      </td>
+                      <td>{note.reason}</td>
+                      <td className="num">{money(note.amount_cents, inv.currency)}</td>
+                      <td className="num">
+                        <button
+                          className="btn sm ghost"
+                          onClick={async () => {
+                            const blob = await apiBlob(`/credit-notes/${note.id}/pdf`);
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = `${note.number}.pdf`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                        >
+                          PDF
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {q.data.refunds.length > 0 && (
+            <div className="panel">
+              <header>
+                <h3>Refunds</h3>
+              </header>
+              <table>
+                <tbody>
+                  {q.data.refunds.map((refund) => (
+                    <tr key={refund.id}>
+                      <td>{fmtDate(refund.refunded_on)}</td>
+                      <td>
+                        {label(refund.method)}
+                        <div className="muted">{refund.reason}</div>
+                      </td>
+                      <td className="num">{money(refund.amount_cents, inv.currency)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {payments.length > 0 && (
             <div className="panel">
               <header>
@@ -608,16 +804,34 @@ export function InvoiceDetail() {
               </header>
               <table>
                 <tbody>
-                  {payments.map((p) => (
-                    <tr key={p.id}>
-                      <td>{fmtDate(p.paid_on)}</td>
-                      <td>
-                        {label(p.method)}
-                        <div className="muted">{p.reference}</div>
-                      </td>
-                      <td className="num">{money(p.amount_cents, inv.currency)}</td>
-                    </tr>
-                  ))}
+                  {payments.map((p) => {
+                    const refunded = q.data.refunds
+                      .filter((r) => r.payment_id === p.id)
+                      .reduce((sum, r) => sum + r.amount_cents, 0);
+                    const refundable = Math.max(p.amount_cents - refunded, 0);
+                    return (
+                      <tr key={p.id}>
+                        <td>{fmtDate(p.paid_on)}</td>
+                        <td>
+                          {label(p.method)}
+                          <div className="muted">{p.reference}</div>
+                        </td>
+                        <td className="num">
+                          <div>{money(p.amount_cents, inv.currency)}</div>
+                          {refunded > 0 && (
+                            <div className="muted">Refunded {money(refunded, inv.currency)}</div>
+                          )}
+                        </td>
+                        <td className="num">
+                          {manage && refundable > 0 && inv.status !== "void" && (
+                            <button className="btn sm ghost" onClick={() => setRefundingPayment(p)}>
+                              Refund
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -671,10 +885,20 @@ export function InvoiceDetail() {
                 </dd>
                 <dt>Paid</dt>
                 <dd>{money(inv.amount_paid_cents, inv.currency)}</dd>
+                <dt>Refunded</dt>
+                <dd>{money(inv.amount_refunded_cents, inv.currency)}</dd>
+                <dt>Credits</dt>
+                <dd>{money(inv.credit_note_cents, inv.currency)}</dd>
                 <dt>Balance</dt>
                 <dd>
                   <strong>{money(inv.balance_cents, inv.currency)}</strong>
                 </dd>
+                {inv.credit_balance_cents > 0 && (
+                  <>
+                    <dt>Client credit</dt>
+                    <dd>{money(inv.credit_balance_cents, inv.currency)}</dd>
+                  </>
+                )}
               </dl>
             </div>
           </div>
@@ -683,6 +907,21 @@ export function InvoiceDetail() {
       </div>
       {line && <LineForm id={id} onClose={() => setLine(false)} />}
       {paying && <PaymentForm inv={inv} onClose={() => setPaying(false)} />}
+      {crediting && <CreditNoteForm inv={inv} onClose={() => setCrediting(false)} />}
+      {refundingPayment && (
+        <RefundForm
+          inv={inv}
+          payment={refundingPayment}
+          refundableCents={Math.max(
+            refundingPayment.amount_cents -
+              q.data.refunds
+                .filter((r) => r.payment_id === refundingPayment.id)
+                .reduce((sum, r) => sum + r.amount_cents, 0),
+            0,
+          )}
+          onClose={() => setRefundingPayment(null)}
+        />
+      )}
       {voiding && (
         <FormModal
           title="Void invoice"
