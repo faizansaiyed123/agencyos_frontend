@@ -53,6 +53,54 @@ function currentUser(state: AnyRecord): AnyRecord {
   if (!user || !user.is_active) throw new DemoFault(401, "unauthorized", "Authentication required");
   return user;
 }
+const entityPermission: Record<string, string> = {
+  client: "client:read",
+  deal: "deal:read",
+  proposal: "proposal:read",
+  invoice: "invoice:read",
+  project: "project:read",
+  task: "project:read",
+};
+
+function authorizeEntity(state: AnyRecord, user: AnyRecord, entityType: string, entityId: string): AnyRecord {
+  const permission = entityPermission[entityType];
+  if (!permission) throw new DemoFault(403, "forbidden", "You do not have access to that item");
+  needPermission(user, permission);
+  const collection: Record<string, AnyRecord[]> = {
+    client: state.clients,
+    deal: state.deals,
+    proposal: state.proposals,
+    invoice: state.invoices,
+    project: state.projects,
+    task: state.tasks,
+  };
+  const entity = assertRow(collection[entityType], entityId, entityType);
+  if (user.role === "team_member" && (entityType === "project" || entityType === "task")) {
+    const projectId = entityType === "project" ? entity.id : entity.project_id;
+    const isMember = state.members.some((member: AnyRecord) =>
+      member.project_id === projectId && member.user_id === user.id
+    );
+    if (!isMember) notFound("Project");
+  }
+  return entity;
+}
+
+function loggableProject(state: AnyRecord, user: AnyRecord, projectId: string, taskId?: string | null): AnyRecord {
+  const project = assertRow(state.projects, projectId, "Project");
+  if (project.status === "completed" || project.status === "cancelled") {
+    conflict("Project is " + project.status, "project_closed");
+  }
+  const member = state.members.find((row: AnyRecord) =>
+    row.project_id === project.id && row.user_id === user.id
+  );
+  if (!member) invalid("You are not on this project's team", "not_project_member");
+  if (taskId) {
+    const task = assertRow(state.tasks, taskId, "Task");
+    if (task.project_id !== project.id) invalid("Task is not part of this project", "task_mismatch");
+  }
+  return member;
+}
+
 function audit(state: AnyRecord, user: AnyRecord, action: string, entityType: string, entityId: string, data: AnyRecord = {}): void {
   state.audit.unshift({ id: uid(), org_id: user.org_id, actor_user_id: user.id, action, entity_type: entityType, entity_id: entityId, data, created_at: now() });
 }
