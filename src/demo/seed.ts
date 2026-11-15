@@ -3,6 +3,7 @@ const iso = (daysAgo = 0) => new Date(now.getTime() - daysAgo * 86_400_000).toIS
 const date = (daysAgo = 0) => iso(daysAgo).slice(0, 10);
 const org = "00000000-0000-4000-8000-000000000001";
 const owner = "00000000-0000-4000-8000-000000000011";
+const admin = "00000000-0000-4000-8000-000000000017";
 const accountManager = "00000000-0000-4000-8000-000000000012";
 const projectManager = "00000000-0000-4000-8000-000000000013";
 const teamMember = "00000000-0000-4000-8000-000000000014";
@@ -35,6 +36,7 @@ export function createSeedState(): Record<string, any> {
     org: { id: org, name: "Northstar Creative Studio", currency: "USD" },
     users: [
       { id: owner, org_id: org, email: "owner@agencyos.local", full_name: "Morgan Chen", role: "owner", client_id: null, is_active: true, mfa_enabled: false, last_login_at: iso(0), created_at: iso(180) },
+      { id: admin, org_id: org, email: "admin@agencyos.local", full_name: "Casey Jordan", role: "admin", client_id: null, is_active: true, mfa_enabled: false, last_login_at: iso(1), created_at: iso(160) },
       { id: accountManager, org_id: org, email: "alex@agencyos.local", full_name: "Alex Rivera", role: "account_manager", client_id: null, is_active: true, mfa_enabled: false, last_login_at: iso(1), created_at: iso(150) },
       { id: projectManager, org_id: org, email: "sarah@agencyos.local", full_name: "Sarah Lin", role: "project_manager", client_id: null, is_active: true, mfa_enabled: false, last_login_at: iso(0), created_at: iso(120) },
       { id: teamMember, org_id: org, email: "jamie@agencyos.local", full_name: "Jamie Patel", role: "team_member", client_id: null, is_active: true, mfa_enabled: false, last_login_at: iso(2), created_at: iso(90) },
@@ -64,7 +66,7 @@ export function createSeedState(): Record<string, any> {
     ],
     proposals: [
       { id: proposalAccepted, client_id: acme, deal_id: dealWon, title: "Payment Platform Delivery Proposal", status: "accepted", currency: "USD", valid_until: date(-20), sent_at: iso(30), accepted_at: iso(12), rejected_at: null, rejection_reason: null, created_at: iso(40), updated_at: iso(12) },
-      { id: proposalDraft, client_id: starlight, deal_id: dealNegotiation, title: "Digital Experience Proposal", status: "draft", currency: "USD", valid_until: date(18), sent_at: null, accepted_at: null, rejected_at: null, rejection_reason: null, created_at: iso(3), updated_at: iso(1) },
+      { id: proposalDraft, client_id: starlight, deal_id: dealNegotiation, title: "Digital Experience Proposal", status: "draft", currency: "USD", valid_until: date(-18), sent_at: null, accepted_at: null, rejected_at: null, rejection_reason: null, created_at: iso(3), updated_at: iso(1) },
     ],
     proposalItems: [
       { id: "00000000-0000-4000-8000-000000000311", proposal_id: proposalAccepted, description: "Discovery and solution architecture", quantity: "1.00", unit_amount: 1500000, position: 0 },
@@ -96,7 +98,7 @@ export function createSeedState(): Record<string, any> {
     ],
     invoices: [
       { id: invoicePaid, client_id: acme, project_id: project, number: "INV-2026-0001", status: "paid", currency: "USD", issue_date: date(35), due_date: date(5), tax_rate_bps: 0, subtotal_cents: 3000000, tax_cents: 0, total_cents: 3000000, amount_paid_cents: 3000000, amount_refunded_cents: 0, credit_note_cents: 0, balance_cents: 0, credit_balance_cents: 0, is_overdue: false, notes: "Discovery milestone", void_reason: null, voided_at: null, sent_at: iso(35), paid_at: iso(20), created_at: iso(38) },
-      { id: invoiceSent, client_id: acme, project_id: project, number: "INV-2026-0002", status: "sent", currency: "USD", issue_date: date(9), due_date: date(-10), tax_rate_bps: 800, subtotal_cents: 420000, tax_cents: 33600, total_cents: 453600, amount_paid_cents: 100000, amount_refunded_cents: 0, credit_note_cents: 0, balance_cents: 353600, credit_balance_cents: 0, is_overdue: true, notes: "Implementation services", void_reason: null, voided_at: null, sent_at: iso(9), paid_at: null, created_at: iso(11) },
+      { id: invoiceSent, client_id: acme, project_id: project, number: "INV-2026-0002", status: "sent", currency: "USD", issue_date: date(9), due_date: date(10), tax_rate_bps: 800, subtotal_cents: 420000, tax_cents: 33600, total_cents: 453600, amount_paid_cents: 100000, amount_refunded_cents: 0, credit_note_cents: 0, balance_cents: 353600, credit_balance_cents: 0, is_overdue: true, notes: "Implementation services", void_reason: null, voided_at: null, sent_at: iso(9), paid_at: null, created_at: iso(11) },
       { id: invoiceDraft, client_id: starlight, project_id: null, number: null, status: "draft", currency: "USD", issue_date: null, due_date: date(-5), tax_rate_bps: 0, subtotal_cents: 0, tax_cents: 0, total_cents: 0, amount_paid_cents: 0, amount_refunded_cents: 0, credit_note_cents: 0, balance_cents: 0, credit_balance_cents: 0, is_overdue: false, notes: "Draft for review", void_reason: null, voided_at: null, sent_at: null, paid_at: null, created_at: iso(2) },
     ],
     invoiceLines: [
