@@ -398,8 +398,8 @@ function RefundForm({
       onSubmit={() => create.mutateAsync(undefined)}
     >
       <p style={{ marginTop: 0 }}>
-        Record a refund that has already been processed outside AgencyOS. This form does not initiate
-        a transfer. The remaining refundable amount for this payment is{" "}
+        Record a refund that has already been processed outside AgencyOS. This form does not
+        initiate a transfer. The remaining refundable amount for this payment is{" "}
         <strong>{money(remainingCents, inv.currency)}</strong>.
       </p>
       <div className="grid2">
@@ -579,10 +579,7 @@ export function InvoiceDetail() {
       (m) => m.amount_cents && !lines.some((l) => l.milestone_id === m.id),
     ) ?? [];
   const creditableCents = inv.total_cents - inv.credit_note_cents;
-  const canIssueCredit =
-    manage &&
-    !["draft", "void", "credited"].includes(inv.status) &&
-    creditableCents > 0;
+  const canIssueCredit = manage && !["draft", "void", "credited"].includes(inv.status) && creditableCents > 0;
   const downloadCreditNote = async (note: CreditNote) => {
     const blob = await apiBlob(`/credit-notes/${note.id}/pdf`);
     const url = URL.createObjectURL(blob);
@@ -857,13 +854,13 @@ export function InvoiceDetail() {
                             {remainingCents > 0 &&
                               inv.status !== "draft" &&
                               inv.status !== "void" && (
-                              <button
-                                className="btn sm ghost"
-                                onClick={() => setRefundTarget({ payment: p, remainingCents })}
-                              >
-                                Record refund
-                              </button>
-                            )}
+                                <button
+                                  className="btn sm ghost"
+                                  onClick={() => setRefundTarget({ payment: p, remainingCents })}
+                                >
+                                  Record refund
+                                </button>
+                              )}
                           </td>
                         )}
                       </tr>
@@ -1019,11 +1016,7 @@ export function InvoiceDetail() {
       {line && <LineForm id={id} onClose={() => setLine(false)} />}
       {paying && <PaymentForm inv={inv} onClose={() => setPaying(false)} />}
       {crediting && (
-        <CreditNoteForm
-          inv={inv}
-          maxCents={creditableCents}
-          onClose={() => setCrediting(false)}
-        />
+        <CreditNoteForm inv={inv} maxCents={creditableCents} onClose={() => setCrediting(false)} />
       )}
       {refundTarget && (
         <RefundForm
