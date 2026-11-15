@@ -227,7 +227,8 @@ export default function Portal() {
             ) : (
               <div className="portal-list">
                 {creditNotesQ.data.map((note) => {
-                  const invoiceNumber = invoices.find((invoice) => invoice.id === note.invoice_id)?.number;
+                  const sourceInvoice = invoices.find((invoice) => invoice.id === note.invoice_id);
+                  const invoiceNumber = sourceInvoice?.number;
                   return (
                     <div className="portal-row" key={note.id}>
                       <div>
@@ -239,7 +240,11 @@ export default function Portal() {
                         <div className="muted">{note.reason}</div>
                       </div>
                       <div className="right-stack">
-                        <strong>{money(note.amount_cents, "USD")}</strong>
+                        <strong>
+                          {sourceInvoice
+                            ? money(note.amount_cents, sourceInvoice.currency)
+                            : (note.amount_cents / 100).toFixed(2)}
+                        </strong>
                         <button
                           className="btn sm ghost"
                           onClick={() => downloadCreditNote(note.id, note.number)}
