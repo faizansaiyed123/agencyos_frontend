@@ -124,8 +124,8 @@ export function createSeedState(): Record<string, any> {
       { id: "00000000-0000-4000-8000-000000000611", entity_type: "time_entry", entity_id: "00000000-0000-4000-8000-000000000452", title: "Approve implementation time · 3 hours", requested_by: teamMember, approver_id: projectManager, status: "pending", decision_note: null, created_at: iso(1) },
     ],
     notifications: [
-      { id: "00000000-0000-4000-8000-000000000621", kind: "task.updated", title: "Payment orchestration is in progress", entity_type: "task", entity_id: taskTwo, is_read: false, created_at: iso(1) },
-      { id: "00000000-0000-4000-8000-000000000622", kind: "invoice.overdue", title: "Invoice INV-2026-0002 is overdue", entity_type: "invoice", entity_id: invoiceSent, is_read: false, created_at: iso(2) },
+      { id: "00000000-0000-4000-8000-000000000621", user_id: owner, kind: "task.updated", title: "Payment orchestration is in progress", entity_type: "task", entity_id: taskTwo, is_read: false, created_at: iso(1) },
+      { id: "00000000-0000-4000-8000-000000000622", user_id: owner, kind: "invoice.overdue", title: "Invoice INV-2026-0002 is overdue", entity_type: "invoice", entity_id: invoiceSent, is_read: false, created_at: iso(2) },
     ],
     files: [],
     invites: [],
