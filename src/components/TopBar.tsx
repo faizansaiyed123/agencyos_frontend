@@ -275,6 +275,7 @@ function SearchBox() {
 function WorkspaceControls() {
   const { user, login } = useAuth();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const accounts = [
     { email: "owner@agencyos.local", label: "Owner" },
@@ -291,6 +292,7 @@ function WorkspaceControls() {
     try {
       await login(email, "workspace-access");
       qc.clear();
+      navigate(email === "client@agencyos.local" ? "/portal" : "/");
     } finally {
       setBusy(false);
     }
@@ -302,6 +304,7 @@ function WorkspaceControls() {
       await resetWorkspace();
       await login("owner@agencyos.local", "workspace-access");
       qc.clear();
+      navigate("/");
     } finally {
       setBusy(false);
     }
