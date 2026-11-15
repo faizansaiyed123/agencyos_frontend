@@ -4,7 +4,7 @@ test("reports, indexed search, keyword assistant, and privacy export use current
   const title = "Insights Pipeline Win " + Date.now();
   const titleSearch = "Insights Pipeline Win";
   await page.goto("/");
-  const created = await page.evaluate(async ({ title }) => {
+  const created = await page.evaluate(async ({ title, titleSearch }) => {
     const { api } = await import("/src/api/client.ts");
     const clients = await api("/clients", { query: { limit: 100 } });
     const client = clients.items[0];
