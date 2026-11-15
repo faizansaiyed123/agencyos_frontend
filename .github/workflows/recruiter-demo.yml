@@ -1,8 +1,8 @@
-name: Recruiter demo verification
+name: AgencyOS demo verification
 
 on:
   push:
-    branches: [recruiter-demo]
+    branches: [demo]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: recruiter-demo
+          ref: demo
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -24,7 +24,7 @@ jobs:
       - name: Build frontend
         run: npm run build
       - name: Build frontend-only container
-        run: docker build --tag agencyos-frontend:recruiter-demo .
+        run: docker build --tag agencyos-frontend:demo .
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
       - name: Run browser workspace tests
