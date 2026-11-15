@@ -1,6 +1,14 @@
 // Thin fetch wrapper. The access token lives in memory only; the refresh token
 // is an httpOnly cookie the browser sends to /api/v1/auth/*. On a 401 we try one
-// silent refresh, then retry the original request.
+// silent refresh, then retry the original request. The public portfolio runtime uses
+// a browser-local API implementation, so no API server or backend deployment is needed.
+
+import { demoFetch } from "../demo/runtime";
+
+/** Route all app requests through the browser-local AgencyOS API runtime. */
+export function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  return demoFetch(input, init);
+}
 
 export class ApiError extends Error {
   constructor(
@@ -36,7 +44,7 @@ async function fetchWithTimeout(
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    return await apiFetch(input, { ...init, signal: controller.signal });
   } finally {
     window.clearTimeout(timer);
   }
