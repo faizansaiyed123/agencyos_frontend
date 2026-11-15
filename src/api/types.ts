@@ -204,7 +204,7 @@ export interface TimeEntry {
   status: "draft" | "approved" | "invoiced";
   approved_by: string | null;
 }
-export type InvoiceStatus = "draft" | "sent" | "partially_paid" | "paid" | "void";
+export type InvoiceStatus = "draft" | "sent" | "partially_paid" | "paid" | "credited" | "void";
 export interface Invoice {
   id: string;
   client_id: string;
@@ -219,7 +219,10 @@ export interface Invoice {
   tax_cents: number;
   total_cents: number;
   amount_paid_cents: number;
+  amount_refunded_cents: number;
+  credit_note_cents: number;
   balance_cents: number;
+  credit_balance_cents: number;
   is_overdue: boolean;
   notes: string | null;
   void_reason: string | null;
@@ -242,10 +245,33 @@ export interface Payment {
   method: string;
   reference: string | null;
 }
+export interface PaymentRefund {
+  id: string;
+  payment_id: string;
+  amount_cents: number;
+  refunded_on: string;
+  method: string;
+  reference: string | null;
+  reason: string;
+  created_by: string;
+  created_at: string;
+}
+export interface CreditNote {
+  id: string;
+  invoice_id: string;
+  number: string;
+  amount_cents: number;
+  issued_on: string;
+  reason: string;
+  created_by: string;
+  created_at: string;
+}
 export interface InvoiceDetail {
   invoice: Invoice;
   lines: InvoiceLine[];
   payments: Payment[];
+  refunds: PaymentRefund[];
+  credit_notes: CreditNote[];
 }
 export interface UnbilledRow {
   entry_id: string;
@@ -414,7 +440,10 @@ export interface PortalInvoice {
   due_date: string | null;
   total_cents: number;
   amount_paid_cents: number;
+  amount_refunded_cents: number;
+  credit_note_cents: number;
   balance_cents: number;
+  credit_balance_cents: number;
   notes: string | null;
 }
 export interface PortalOverview {
@@ -434,4 +463,14 @@ export interface PortalProposalItem {
 export interface PortalProposalDetail {
   proposal: PortalProposal;
   items: PortalProposalItem[];
+}
+
+export interface PortalCreditNote {
+  id: string;
+  invoice_id: string;
+  number: string;
+  amount_cents: number;
+  issued_on: string;
+  reason: string;
+  created_at: string;
 }
