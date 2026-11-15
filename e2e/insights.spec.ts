@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 test("reports, indexed search, keyword assistant, and privacy export use current workspace records", async ({ page }) => {
   const title = "Insights Pipeline Win " + Date.now();
   const titleSearch = "Insights Pipeline Win";
+  await page.goto("/");
   const created = await page.evaluate(async ({ title }) => {
     const { api } = await import("/src/api/client.ts");
     const clients = await api("/clients", { query: { limit: 100 } });
