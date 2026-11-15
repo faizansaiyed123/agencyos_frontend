@@ -278,6 +278,7 @@ function WorkspaceControls() {
   const [busy, setBusy] = useState(false);
   const accounts = [
     { email: "owner@agencyos.local", label: "Owner" },
+    { email: "admin@agencyos.local", label: "Admin" },
     { email: "alex@agencyos.local", label: "Account manager" },
     { email: "sarah@agencyos.local", label: "Project manager" },
     { email: "jamie@agencyos.local", label: "Team member" },
