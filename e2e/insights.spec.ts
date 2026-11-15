@@ -66,8 +66,9 @@ test("reports, indexed search, keyword assistant, and privacy export use current
   await page.goto("/");
   const searchBox = page.getByLabel("Search");
   await searchBox.fill(titleSearch);
-  await expect(page.getByRole("button", { name: new RegExp(titleSearch) })).toBeVisible();
-  await page.getByRole("button", { name: new RegExp(titleSearch) }).click();
+  const matchingDeal = page.locator(".searchbox .dropdown").getByRole("button").filter({ hasText: title }).last();
+  await expect(matchingDeal).toBeVisible();
+  await matchingDeal.click();
   await expect(page).toHaveURL(new RegExp("/deals/" + created.dealId));
 
   await page.goto("/");
