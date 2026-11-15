@@ -89,4 +89,20 @@ test("authenticator enrollment and sign-in use time-based one-time passwords", a
   await page.getByLabel("Code").fill(loginCode);
   await page.getByRole("button", { name: "Verify and sign in" }).click();
   await expect(page.locator(".me")).toContainText("Morgan Chen");
+
+  const disableAttempt = await page.evaluate(async (code) => {
+    const { api } = await import("/src/api/client.ts");
+    try {
+      await api("/auth/mfa/disable", { body: { password: "invalid-local-test-value", code } });
+      return { rejected: false, status: 200 };
+    } catch (error) {
+      return { rejected: true, status: error.status, code: error.code };
+    }
+  }, loginCode);
+  expect(disableAttempt).toMatchObject({
+    rejected: true,
+    status: 401,
+    code: "invalid_credentials",
+  });
+  await expect(page.getByText("On", { exact: true })).toBeVisible();
 });
