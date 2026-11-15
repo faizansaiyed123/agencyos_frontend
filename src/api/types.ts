@@ -110,6 +110,7 @@ export interface Invite {
   expires_at: string;
   accepted_at: string | null;
   created_at: string;
+  local_accept_url?: string;
 }
 export interface LoginResult {
   mfa_required: boolean;
