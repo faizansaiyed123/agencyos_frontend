@@ -191,14 +191,18 @@ function Webhooks() {
                   <tr key={d.id}>
                     <td>{d.event_type}</td>
                     <td>
-                      <span
-                        className={`badge ${d.status === "success" ? "moss" : d.status === "failed" ? "brick" : "sun"}`}
-                      >
-                        {label(d.status)}
-                      </span>
+                      {d.local_simulation ? (
+                        <span className="badge sun">Local event</span>
+                      ) : (
+                        <span
+                          className={`badge ${d.status === "success" ? "moss" : d.status === "failed" ? "brick" : "sun"}`}
+                        >
+                          {label(d.status)}
+                        </span>
+                      )}
                     </td>
                     <td className="muted">
-                      {d.response_status ?? ""} {d.last_error ?? ""}
+                      {d.local_simulation ? "Not sent outside this browser" : `${d.response_status ?? ""} ${d.last_error ?? ""}`}
                     </td>
                     <td className="muted num">
                       {d.attempts}× · {ago(d.created_at)}
