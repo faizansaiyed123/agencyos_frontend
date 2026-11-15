@@ -187,7 +187,13 @@ export default function Portal() {
                     </div>
                     <div className="right-stack">
                       <span
-                        className={`badge ${i.status === "paid" || i.status === "credited" ? "moss" : i.balance_cents > 0 ? "sun" : ""}`}
+                        className={`badge ${
+                          i.status === "paid" || i.status === "credited"
+                            ? "moss"
+                            : i.balance_cents > 0
+                              ? "sun"
+                              : ""
+                        }`}
                       >
                         {label(i.status)}
                       </span>
@@ -223,7 +229,9 @@ export default function Portal() {
             ) : creditNotesQ.error ? (
               <ErrorNote error={creditNotesQ.error} />
             ) : !creditNotesQ.data?.length ? (
-              <Empty title="No credit notes">Issued credit notes for your account will appear here.</Empty>
+              <Empty title="No credit notes">
+                Issued credit notes for your account will appear here.
+              </Empty>
             ) : (
               <div className="portal-list">
                 {creditNotesQ.data.map((note) => {
