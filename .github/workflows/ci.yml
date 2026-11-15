@@ -21,8 +21,8 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Inspect invoice page formatting
-        run: npx prettier src/pages/Invoices.tsx | diff -u src/pages/Invoices.tsx -
+      - name: Verify formatting
+        run: npm run format:check
       - name: Production build
         run: npm run build
       - name: Install Playwright Chromium
