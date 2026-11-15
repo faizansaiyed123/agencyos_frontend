@@ -4,7 +4,7 @@ This branch adds an interactive, browser-executed AgencyOS workspace to the depl
 
 ## Non-negotiable deployment boundary
 
-The FastAPI backend is not deployed, started, or required by this experience. The companion backend repository is the behavioral reference only. The `recruiter-demo` branch in that repository is intentionally left without code changes.
+The FastAPI backend is not deployed, started, or required by this experience. The companion backend repository is the behavioral reference only. The `demo` branch in that repository is intentionally left without code changes.
 
 ## Request and persistence model
 
