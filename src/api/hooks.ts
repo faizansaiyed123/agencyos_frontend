@@ -7,6 +7,7 @@ import type {
   DealHistory,
   Invite,
   Page,
+  PortalCreditNote,
   Proposal,
   ProposalWithItems,
   User,
@@ -88,9 +89,11 @@ import type {
   Comment as Cmt,
   EntityType,
   FileAsset,
+  CreditNote,
   FlagRow,
   Invoice,
   InvoiceDetail,
+  PaymentRefund,
   Notification,
   Overview,
   PipelineReport,
@@ -259,4 +262,9 @@ export const usePortalInvoices = () =>
   useQuery({
     queryKey: ["portal-invoices"],
     queryFn: () => api<PortalInvoice[]>("/portal/invoices"),
+  });
+export const usePortalCreditNotes = () =>
+  useQuery({
+    queryKey: ["portal-credit-notes"],
+    queryFn: () => api<PortalCreditNote[]>("/portal/credit-notes"),
   });
