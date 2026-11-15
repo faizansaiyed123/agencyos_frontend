@@ -47,7 +47,7 @@ test("reports, indexed search, keyword assistant, and privacy export use current
       attention,
       outstanding: overview.outstanding_cents,
     };
-  }, { title });
+  }, { title, titleSearch });
 
   expect(created.wonValue).toBeGreaterThanOrEqual(13579);
   expect(created.wonStage.value_cents).toBeGreaterThanOrEqual(13579);
