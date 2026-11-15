@@ -18,7 +18,7 @@ function OfflineBanner() {
   }, []);
   return online ? null : (
     <div className="notice" role="status">
-      You're offline. Changes cannot be saved until the connection returns.
+      You're offline. This workspace continues to save changes in this browser.
     </div>
   );
 }
