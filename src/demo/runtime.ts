@@ -872,7 +872,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     const file = fileEntry as File;
     if (!file.size) invalid("The file is empty", "empty_file");
     if (file.size > 20 * 1024 * 1024) throw new DemoFault(413, "file_too_large", "Files may be at most 20 MB");
-    const filename = file.name.replace(/\\/g, "/").split("/").pop()!.replace(/[\\x00-\\x1f\\x7f]/g, "").trim().slice(0, 200) || "file";
+    const filename = file.name.replace(/\\/g, "/").split("/").pop()!.replace(/[\u0000-\u001F\u007F]/g, "").replace(/^\.+|\.+$/g, "").trim().replace(/\s+/g, " ").slice(0, 200) || "file";
     const extension = filename.includes(".") ? filename.split(".").pop()!.toLowerCase() : "";
     const allowed: Record<string, string[]> = {
       pdf: ["application/pdf"], png: ["image/png"], jpg: ["image/jpeg"], jpeg: ["image/jpeg"],
