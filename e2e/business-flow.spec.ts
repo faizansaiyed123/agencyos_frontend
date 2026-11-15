@@ -26,6 +26,8 @@ test("client → deal → proposal acceptance creates a project and milestones",
   await page.getByRole("link", { name: "New proposal" }).click();
   await page.getByLabel("Proposal title").fill(proposalName);
   await page.getByRole("button", { name: "Create draft" }).click();
+  console.log("PROPOSAL AFTER SUBMIT URL", page.url());
+  console.log("PROPOSAL AFTER SUBMIT MAIN", (await page.locator("main").innerText()).slice(0, 1400));
   await expect(page.getByRole("heading", { name: proposalName })).toBeVisible();
 
   await page.getByRole("button", { name: "Add line item" }).click();
