@@ -462,7 +462,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
 
   if (method === "POST" && path === "/auth/refresh") {
     if (!user) throw new DemoFault(401, "missing_refresh_token", "No interactive workspace session is available");
-    return json({ access_token: "agencyos-local-session", expires_in: 900 });
+    return json({ access_token: "agencyos-local-session", token_type: "bearer", expires_in: 900 });
   }
   if (method === "POST" && path === "/auth/login") {
     const email = String(body.email || "").toLowerCase();
@@ -475,11 +475,11 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
       state.mfaPending ??= {};
       const pendingToken = uid();
       state.mfaPending[pendingToken] = found.id;
-      return json({ mfa_required: true, access_token: null, expires_in: null, mfa_pending_token: pendingToken });
+      return json({ mfa_required: true, access_token: null, token_type: null, expires_in: null, mfa_pending_token: pendingToken });
     }
     state.activeUserId = found.id;
     found.last_login_at = now();
-    return json({ mfa_required: false, access_token: "agencyos-local-session", expires_in: 900, mfa_pending_token: null });
+    return json({ mfa_required: false, access_token: "agencyos-local-session", token_type: "bearer", expires_in: 900, mfa_pending_token: null });
   }
   if (method === "POST" && path === "/auth/signup") {
     required(body.organization_name, "organization_name"); required(body.full_name, "full_name"); required(body.email, "email");
@@ -493,7 +493,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     state.idempotency = {};
     state.mfa = {};
     state.mfaPending = {};
-    return json({ access_token: "agencyos-local-session", expires_in: 900 }, 201);
+    return json({ access_token: "agencyos-local-session", token_type: "bearer", expires_in: 900 }, 201);
   }
   if (method === "POST" && path === "/auth/password/forgot") {
     required(body.email, "email");
@@ -1053,7 +1053,11 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     if (m[2] === "decide") recordLocalWebhookEvent(state, "approval.decided", { approval_id: approval.id, status: approval.status });
     return recordResponse(approval);
   }
-  if (method === "GET" && path === "/notifications") return json(state.notifications.filter((r: AnyRecord) => r.user_id === user!.id).slice(0, Number(query.get("limit") || 30)));
+  if (method === "GET" && path === "/notifications") {
+    let rows = state.notifications.filter((r: AnyRecord) => r.user_id === user!.id);
+    if (query.get("unread") === "true") rows = rows.filter((r: AnyRecord) => !r.is_read);
+    return json(rows.slice(0, Number(query.get("limit") || 30)));
+  }
   if (method === "GET" && path === "/notifications/unread-count") return json({ unread: state.notifications.filter((r: AnyRecord) => r.user_id === user!.id && !r.is_read).length });
   if (method === "POST" && path === "/notifications/read") {
     const ids: string[] | null = body.ids ?? null; let count = 0;
