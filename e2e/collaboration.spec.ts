@@ -20,8 +20,6 @@ test("project collaboration supports comments, file storage, and approvals", asy
     mimeType: "text/plain",
     buffer: Buffer.from("AgencyOS browser workspace file attachment.\n"),
   });
-  const filesPanel = page.locator(".panel").filter({ has: page.getByRole("heading", { name: "Files" }) });
-  console.log("FILE PANEL AFTER UPLOAD", await filesPanel.innerText());
     await expect(page.getByRole("button", { name: fileName })).toBeVisible();
 
   const [download] = await Promise.all([
@@ -42,7 +40,9 @@ test("project collaboration supports comments, file storage, and approvals", asy
 
   await page.getByLabel("View workspace as").selectOption("sarah@agencyos.local");
   await page.getByRole("button", { name: /Notifications/ }).click();
-  await expect(page.getByText("Approve the project delivery review", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText("Needs your decision")).toHaveCount(0);
+  const notifications = page.getByRole("dialog", { name: "Notifications" });
+  const approvalItem = notifications.locator(".dd-item").filter({ has: page.getByRole("button", { name: "Approve", exact: true }) });
+  await expect(approvalItem).toContainText("Approve the project delivery review");
+  await approvalItem.getByRole("button", { name: "Approve", exact: true }).click();
+  await expect(notifications.getByText("Needs your decision")).toHaveCount(0);
 });
