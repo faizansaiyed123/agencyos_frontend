@@ -24,6 +24,8 @@ jobs:
       - name: Normalize billing UI formatting on feature branch
         if: github.event_name == 'pull_request' && github.head_ref == 'feature/billing-credit-refunds-ui'
         run: |
+          git fetch origin "${{ github.head_ref }}"
+          git switch -C "${{ github.head_ref }}" "origin/${{ github.head_ref }}"
           npx prettier --write src/pages/Invoices.tsx
           if ! git diff --quiet -- src/pages/Invoices.tsx; then
             git config user.name "github-actions[bot]"
