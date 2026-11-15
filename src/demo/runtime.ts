@@ -104,8 +104,8 @@ function loggableProject(state: AnyRecord, user: AnyRecord, projectId: string, t
 function audit(state: AnyRecord, user: AnyRecord, action: string, entityType: string, entityId: string, data: AnyRecord = {}): void {
   state.audit.unshift({ id: uid(), org_id: user.org_id, actor_user_id: user.id, action, entity_type: entityType, entity_id: entityId, data, created_at: now() });
 }
-function notify(state: AnyRecord, kind: string, title: string, entityType: string | null = null, entityId: string | null = null): void {
-  const notification = { id: uid(), user_id: state.activeUserId, kind, title, entity_type: entityType, entity_id: entityId, is_read: false, created_at: now() };
+function notify(state: AnyRecord, kind: string, title: string, entityType: string | null = null, entityId: string | null = null, recipientUserId: string | null = state.activeUserId): void {
+  const notification = { id: uid(), user_id: recipientUserId, kind, title, entity_type: entityType, entity_id: entityId, is_read: false, created_at: now() };
   state.notifications.unshift(notification);
   emitDemoEvent("notification", notification);
 }
@@ -675,7 +675,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (method === "POST" && path === "/approvals") {
     needPermission(user!, "approval:manage"); required(body.approver_id, "approver_id"); required(body.title, "title");
     const row = { id: uid(), entity_type: body.entity_type, entity_id: body.entity_id, title: body.title, requested_by: user!.id, approver_id: body.approver_id, status: "pending", decision_note: null, created_at: now() };
-    state.approvals.unshift(row); notify(state, "approval.requested", row.title, row.entity_type, row.entity_id); return json(row, 201);
+    state.approvals.unshift(row); notify(state, "approval.requested", row.title, row.entity_type, row.entity_id, row.approver_id); return json(row, 201);
   }
   if (method === "GET" && path === "/approvals") {
     let rows = state.approvals.slice(); if (query.get("inbox") === "true") rows = rows.filter((a: AnyRecord) => a.approver_id === user!.id); else rows = rows.filter((a: AnyRecord) => a.requested_by === user!.id || a.approver_id === user!.id);
@@ -686,7 +686,7 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
     const approval = assertRow(state.approvals, m[1], "Approval"); if (approval.status !== "pending") conflict("This approval has already been decided", "approval_already_decided");
     if (m[2] === "decide") { if (approval.approver_id !== user!.id && !hasPermission(user!, "user:manage")) throw new DemoFault(403, "forbidden", "Only the assigned approver can decide this request"); approval.status = body.approve ? "approved" : "rejected"; approval.decision_note = body.note ?? null; }
     else { if (approval.requested_by !== user!.id) throw new DemoFault(403, "forbidden", "Only the requester can cancel this request"); approval.status = "cancelled"; }
-    notify(state, "approval." + approval.status, approval.title, approval.entity_type, approval.entity_id); return recordResponse(approval);
+    notify(state, "approval." + approval.status, approval.title, approval.entity_type, approval.entity_id, approval.requested_by); return recordResponse(approval);
   }
   if (method === "GET" && path === "/notifications") return json(state.notifications.filter((r: AnyRecord) => r.user_id === user!.id).slice(0, Number(query.get("limit") || 30)));
   if (method === "GET" && path === "/notifications/unread-count") return json({ unread: state.notifications.filter((r: AnyRecord) => r.user_id === user!.id && !r.is_read).length });
