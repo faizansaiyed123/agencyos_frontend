@@ -186,9 +186,18 @@ export function Invoices() {
                   <td className="muted">{fmtDate(i.due_date)}</td>
                   <td className="num">{money(i.total_cents, i.currency)}</td>
                   <td className="num">
-                    {i.status === "draft" || i.status === "void"
-                      ? "—"
-                      : money(i.balance_cents, i.currency)}
+                    {i.status === "draft" || i.status === "void" ? (
+                      "—"
+                    ) : (
+                      <>
+                        {money(i.balance_cents, i.currency)}
+                        {i.credit_balance_cents > 0 && (
+                          <div className="muted">
+                            Client credit {money(i.credit_balance_cents, i.currency)}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -220,7 +229,7 @@ function PaymentForm({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
         },
         headers: { "Idempotency-Key": key },
       }),
-    ["invoice", "invoices", "overview", "attention"],
+    ["invoice", "invoices", "overview", "attention", "portal-overview"],
   );
   return (
     <FormModal
@@ -298,7 +307,7 @@ function CreditNoteForm({
         },
         headers: { "Idempotency-Key": crypto.randomUUID() },
       }),
-    ["invoice", "invoices", "overview", "attention", "portal-credit-notes"],
+    ["invoice", "invoices", "overview", "attention", "portal-overview", "portal-credit-notes"],
   );
   return (
     <FormModal
