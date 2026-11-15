@@ -279,8 +279,28 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
   if (method === "POST" && path === "/auth/password/forgot") return json({ detail: "If the account exists, password recovery instructions have been prepared." }, 202);
   if (method === "POST" && path === "/auth/password/reset") return empty();
   if (method === "POST" && path === "/invites/accept") {
-    const created = { id: uid(), org_id: state.org.id, email: "new.member@agencyos.local", full_name: body.full_name || "New teammate", role: "team_member", client_id: null, is_active: true, mfa_enabled: false, last_login_at: now(), created_at: now() };
-    state.users.unshift(created); state.activeUserId = created.id;
+    required(body.token, "token");
+    required(body.full_name, "full_name");
+    required(body.password, "password");
+    if (String(body.password).length < 10 || !/[A-Z]/.test(body.password) || !/[a-z]/.test(body.password) || !/\\d/.test(body.password)) {
+      invalid("Password must be at least 10 characters and include upper and lower case letters and a digit", "weak_password");
+    }
+    const invite = state.invites.find((candidate: AnyRecord) => candidate.token === body.token);
+    if (!invite) notFound("Invite");
+    if (invite.accepted_at || invite.revoked_at) conflict("This invite is no longer valid", "invite_invalid");
+    if (new Date(invite.expires_at).getTime() <= Date.now()) conflict("This invite has expired", "invite_expired");
+    if (state.users.some((candidate: AnyRecord) => candidate.email.toLowerCase() === invite.email.toLowerCase() && candidate.is_active)) {
+      conflict("An account with this email already exists", "email_taken");
+    }
+    const created = {
+      id: uid(), org_id: state.org.id, email: invite.email, full_name: String(body.full_name).trim(),
+      role: invite.role, client_id: invite.client_id ?? null, is_active: true, mfa_enabled: false,
+      last_login_at: now(), created_at: now(),
+    };
+    invite.accepted_at = now();
+    state.users.unshift(created);
+    state.activeUserId = created.id;
+    audit(state, created, "invite.accepted", "user", created.id, { invite_id: invite.id });
     return json({ access_token: "agencyos-local-session", expires_in: 900 }, 201);
   }
   if (method === "POST" && path === "/auth/mfa/verify") {
@@ -313,20 +333,69 @@ async function execute(req: DemoRequest, state: AnyRecord): Promise<Response> {
 
   if (method === "GET" && path === "/users") { needPermission(user!, "user:read"); return json(page(state.users.filter((u: AnyRecord) => u.org_id === user!.org_id), query)); }
   if (method === "POST" && path === "/invites") {
-    needPermission(user!, "user:invite"); required(body.email, "email");
-    const row = { id: uid(), email: String(body.email).toLowerCase(), role: body.role || "team_member", client_id: body.client_id ?? null, expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(), accepted_at: null, created_at: now() };
-    state.invites.unshift(row); audit(state, user!, "invite.created", "invite", row.id); return json(row, 201);
+    needPermission(user!, "user:invite");
+    required(body.email, "email");
+    const email = String(body.email).trim().toLowerCase();
+    const role = String(body.role || "team_member");
+    const allowedRoles = ["admin","account_manager","project_manager","team_member","finance","client"];
+    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) invalid("Enter a valid email address", "invalid_email");
+    if (!allowedRoles.includes(role)) conflict("Invalid invitation role", "invalid_role");
+    const clientId = body.client_id ?? null;
+    if (role === "client" && !clientId) conflict("Client invites must be linked to a client", "client_link_required");
+    if (role !== "client" && clientId) conflict("Only client invites can be linked to a client", "invalid_client_link");
+    if (clientId) {
+      const client = assertRow(state.clients, clientId, "Client");
+      if (client.archived_at) notFound("Client");
+    }
+    if (state.users.some((candidate: AnyRecord) => candidate.email.toLowerCase() === email && candidate.is_active)) {
+      conflict("An account with this email already exists", "email_taken");
+    }
+    state.invites.forEach((existing: AnyRecord) => {
+      if (existing.email.toLowerCase() === email && !existing.accepted_at && !existing.revoked_at) existing.revoked_at = now();
+    });
+    const token = "invite_" + uid().replace(/-/g, "");
+    const row = {
+      id: uid(), email, role, client_id: clientId,
+      expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+      accepted_at: null, revoked_at: null, created_at: now(), token,
+      local_accept_url: "/accept-invite?token=" + encodeURIComponent(token),
+    };
+    state.invites.unshift(row);
+    audit(state, user!, "invite.created", "invite", row.id, { email, role });
+    const { token: _token, revoked_at: _revokedAt, ...response } = row;
+    return json(response, 201);
   }
-  if (method === "GET" && path === "/invites") { needPermission(user!, "user:invite"); return json(state.invites); }
-  let m = match(path, /^\/invites\/([^/]+)$/);
-  if (m && method === "DELETE") { needPermission(user!, "user:invite"); state.invites = state.invites.filter((r: AnyRecord) => r.id !== m![1]); return empty(); }
-  m = match(path, /^\/users\/([^/]+)\/role$/);
+  if (method === "GET" && path === "/invites") {
+    needPermission(user!, "user:invite");
+    return json(state.invites.filter((row: AnyRecord) => !row.revoked_at).map(({ token: _token, revoked_at: _revokedAt, ...row }: AnyRecord) => row));
+  }
+  let m = match(path, /^\\/invites\\/([^/]+)$/);
+  if (m && method === "DELETE") {
+    needPermission(user!, "user:invite");
+    const invite = assertRow(state.invites, m[1], "Invite");
+    if (invite.accepted_at) conflict("Invite already accepted", "invite_already_accepted");
+    invite.revoked_at = now();
+    audit(state, user!, "invite.revoked", "invite", invite.id);
+    return empty();
+  }
+  m = match(path, /^\\/users\\/([^/]+)\\/role$/);
   if (m && method === "POST") {
     needPermission(user!, "user:manage");
+    if (!["owner","admin"].includes(user!.role)) throw new DemoFault(403, "forbidden", "Only an owner or admin can change roles");
     const target = assertRow(state.users, m[1], "User");
     const role = query.get("new_role");
-    if (!["owner","admin","account_manager","project_manager","team_member","finance","client"].includes(role || "")) invalid("Unsupported role", "invalid_role");
-    target.role = role; return recordResponse(target);
+    if (!["owner","admin","account_manager","project_manager","team_member","finance"].includes(role || "")) {
+      if (role === "client") throw new DemoFault(403, "forbidden", "Client access must be created through a client invite");
+      conflict("Invalid role", "invalid_role");
+    }
+    if (role === "owner" && user!.role !== "owner") throw new DemoFault(403, "forbidden", "Only an owner can grant the owner role");
+    if (target.role === "owner" && role !== "owner" && state.users.filter((candidate: AnyRecord) => candidate.is_active && candidate.role === "owner").length <= 1) {
+      conflict("An organization must have at least one owner", "last_owner");
+    }
+    target.role = role;
+    target.client_id = null;
+    audit(state, user!, "user.role_changed", "user", target.id, { new_role: role });
+    return recordResponse(target);
   }
 
   if (method === "GET" && path === "/clients") {
