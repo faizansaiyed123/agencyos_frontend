@@ -806,7 +806,40 @@ export async function demoFetch(input: RequestInfo | URL, init?: RequestInit): P
       if (contentType.includes("application/json")) body = await request.clone().json();
       else if (contentType.includes("application/x-www-form-urlencoded")) body = Object.fromEntries(new URLSearchParams(await request.clone().text()));
     }
-    return await withDemoState((state) => execute({ request, path, method: request.method.toUpperCase(), query: url.searchParams, body }, state));
+    return await withDemoState(async (state) => {
+      const method = request.method.toUpperCase();
+      const activeUser = state.users.find((candidate: AnyRecord) =>
+        candidate.id === state.activeUserId && candidate.is_active
+      );
+      const key = request.headers.get("Idempotency-Key")?.trim();
+      let keySlot: string | null = null;
+      let requestFingerprint = "";
+
+      if (key && activeUser) {
+        if (key.length > 200) invalid("Idempotency-Key must be 200 characters or fewer", "invalid_idempotency_key");
+        keySlot = String(activeUser.org_id) + ":" + key;
+        requestFingerprint = JSON.stringify({ method, path, body });
+        const previous = state.idempotency[keySlot];
+        if (previous) {
+          if (previous.request_fingerprint !== requestFingerprint) {
+            conflict("The Idempotency-Key was reused with a different request", "idempotency_key_conflict");
+          }
+          return previous.status === 204 ? empty() : json(previous.body, previous.status);
+        }
+      }
+
+      const response = await execute({ request, path, method, query: url.searchParams, body }, state);
+      if (keySlot && response.ok && response.headers.get("Content-Type")?.includes("application/json")) {
+        const responseBody = await response.clone().json();
+        state.idempotency[keySlot] = {
+          request_fingerprint: requestFingerprint,
+          response_status: response.status,
+          response_body: responseBody,
+          created_at: now(),
+        };
+      }
+      return response;
+    });
   } catch (error) {
     return faultResponse(error);
   }
