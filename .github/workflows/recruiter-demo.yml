@@ -23,6 +23,8 @@ jobs:
         run: npm ci
       - name: Build frontend
         run: npm run build
+      - name: Build frontend-only container
+        run: docker build --tag agencyos-frontend:recruiter-demo .
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
       - name: Run browser workspace tests
