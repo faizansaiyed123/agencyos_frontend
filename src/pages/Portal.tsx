@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { api, apiBlob } from "../api/client";
-import { useAction, usePortalOverview, usePortalProposal } from "../api/hooks";
+import {
+  useAction,
+  usePortalCreditNotes,
+  usePortalOverview,
+  usePortalProposal,
+} from "../api/hooks";
 import { Empty, ErrorNote, PageHead, Spinner, StatusBadge } from "../components/ui";
 import { fmtDate, label, money } from "../lib";
 import type { ProposalStatus } from "../api/types";
@@ -36,6 +41,7 @@ function ProposalCard({
 
 export default function Portal() {
   const q = usePortalOverview();
+  const creditNotes = usePortalCreditNotes();
   const [selected, setSelected] = useState<string | null>(null);
   const detail = usePortalProposal(selected);
   const decide = useAction(
@@ -56,6 +62,7 @@ export default function Portal() {
   const { client, projects, proposals, invoices } = q.data;
   const openProposals = proposals.filter((p) => p.status === "sent");
   const outstanding = invoices.reduce((sum, i) => sum + i.balance_cents, 0);
+  const clientCredit = invoices.reduce((sum, i) => sum + i.credit_balance_cents, 0);
   const downloadInvoice = async (id: string, number: string | null) => {
     const blob = await apiBlob(`/portal/invoices/${id}/pdf`);
     const url = URL.createObjectURL(blob);
@@ -87,6 +94,9 @@ export default function Portal() {
           </span>
           <span>
             <b>{money(outstanding)}</b> outstanding
+          </span>
+          <span>
+            <b>{money(clientCredit)}</b> credit balance
           </span>
         </div>
       </div>
@@ -139,6 +149,50 @@ export default function Portal() {
                     <div className="right-stack">
                       <span className="badge blue">{label(p.status)}</span>
                       {p.due_date && <span className="muted">{fmtDate(p.due_date)}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="panel">
+          <header>
+            <h3>Credit notes</h3>
+            <span className="muted">{creditNotes.data?.length ?? 0}</span>
+          </header>
+          <div className="body">
+            {creditNotes.isLoading ? (
+              <Spinner />
+            ) : !creditNotes.data?.length ? (
+              <Empty title="No credit notes">Issued credit notes will appear here.</Empty>
+            ) : (
+              <div className="portal-list">
+                {creditNotes.data.map((note) => (
+                  <div className="portal-row" key={note.id}>
+                    <div>
+                      <strong>{note.number}</strong>
+                      <div className="muted">
+                        {fmtDate(note.issued_on)} · {note.reason}
+                      </div>
+                    </div>
+                    <div className="right-stack">
+                      <strong>{money(note.amount_cents)}</strong>
+                      <button
+                        className="btn sm ghost"
+                        onClick={async () => {
+                          const blob = await apiBlob(`/portal/credit-notes/${note.id}/pdf`);
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `${note.number}.pdf`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                      >
+                        PDF
+                      </button>
                     </div>
                   </div>
                 ))}
